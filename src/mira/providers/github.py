@@ -686,6 +686,15 @@ class GitHubProvider(BaseProvider):
             if not page.get("hasNextPage"):
                 return None
             cursor = page.get("endCursor")
+            if cursor is None:
+                # Defensive: GitHub shouldn't ever return hasNextPage=True with
+                # a null endCursor, but a malformed response would otherwise
+                # send the same query forever.
+                logger.warning(
+                    "hasNextPage=True but endCursor is None for comment %s; stopping pagination",
+                    comment_node_id,
+                )
+                return None
 
     async def get_all_bot_threads(
         self, pr_info: PRInfo, bot_login: str | None = None
