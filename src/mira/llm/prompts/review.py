@@ -121,15 +121,9 @@ def build_security_review_prompt(
     """
     env = _get_template_env()
     template = env.get_template("security_review.jinja2")
-
     file_contexts = [build_file_context_string(f) for f in files]
     file_paths = [f.path for f in files]
-
-    system_content = template.render(
-        pr_title=pr_title,
-        file_paths=file_paths,
-    )
-
+    system_content = template.render(pr_title=pr_title, file_paths=file_paths)
     return [
         {"role": "system", "content": system_content},
         {"role": "user", "content": "\n\n".join(file_contexts)},

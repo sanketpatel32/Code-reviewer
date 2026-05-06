@@ -85,27 +85,32 @@ class ReviewConfig(BaseModel):
     # Run a second-pass LLM critique on each draft comment before posting.
     # The critic asks "is this analysis actually correct? Cite specific
     # lines that prove it." Comments that fail the critique are dropped.
-    # Catches confident-but-wrong findings; uses the cheap indexing-tier
-    # model (~$0.001 per review). Disable for faster reviews on small PRs
-    # where the extra ~5-10s wall time matters.
+    # Disable for faster reviews where the extra wall-clock time matters
+    # more than catching confident-but-wrong findings.
     self_critique: bool = True
 
     # Run a dedicated security review pass in parallel with the main review.
-    # Uses the same review-tier LLM with a security-focused prompt (XSS,
-    # injection, auth bypass, CSRF, SSRF, origin validation, deserialization,
-    # crypto). Findings are merged into the main review's comments list and
-    # go through the same noise filter (dedup against overlapping main-pass
-    # findings). Adds ~one main-tier LLM call per PR; disable on cost-
-    # sensitive deployments.
+    # Uses the review LLM with a security-focused prompt (XSS, injection,
+    # auth bypass, CSRF, SSRF, origin validation, deserialization, crypto).
+    # Findings are merged into the main review's comments list and go
+    # through the same noise filter (dedup against overlapping main-pass
+    # findings).
     security_pass: bool = True
 
     # When the repo is not indexed, give the reviewer LLM tools (`read_file`,
     # `grep_repo`) it can call to fetch cross-file context on demand. Closes
     # the gap on Java/Go cross-file findings that JIT pre-fetch can't reach
-    # (those languages need build-system parsing to resolve imports). Adds
-    # 1-3 extra LLM hops per chunk on unindexed reviews; no effect when the
-    # repo is indexed.
+    # (those languages need build-system parsing to resolve imports).
+    # No effect when the repo is indexed.
     agentic_tools: bool = True
+
+    # Whether the JIT cross-file resolver should attempt Java + Go imports.
+    # Resolution for those languages is heuristic (we can't see the build
+    # system), and a wrong-file pick pollutes the prompt with off-topic
+    # symbols. Toggle off when measuring whether Java/Go JIT is helping vs
+    # hurting on a given codebase. The agentic loop still covers cross-file
+    # needs for Java/Go on the unindexed path when this is False.
+    jit_java_go: bool = True
 
 
 class ProviderConfig(BaseModel):

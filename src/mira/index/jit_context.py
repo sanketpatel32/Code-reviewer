@@ -38,6 +38,62 @@ _RUBY_REQUIRE_RE = re.compile(
     re.MULTILINE,
 )
 
+# Java: `import com.foo.bar.Baz;` or `import static com.foo.bar.Baz.method;`.
+# We capture the dotted FQN; wildcard imports (`import com.foo.*`) are
+# captured but yield no useful single-file candidate (we drop them downstream).
+_JAVA_IMPORT_RE = re.compile(
+    r"^\s*import\s+(?:static\s+)?([\w.]+(?:\.\*)?)\s*;",
+    re.MULTILINE,
+)
+
+# Go imports come in two shapes:
+#   import "single/path"
+#   import (
+#       "first"
+#       aliased "second"
+#   )
+# A regex over the whole file is too broad (it matches any quoted string,
+# which is everywhere in Go — struct tags, error messages, format strings).
+# Instead we walk lines and only treat quoted strings as imports when we're
+# inside an `import (` block or on an `import "..."` line.
+_GO_SINGLE_IMPORT_RE = re.compile(r'^\s*import\s+(?:(?:[A-Za-z_]\w*|\.)\s+)?"([^"]+)"\s*$')
+_GO_BLOCK_PATH_RE = re.compile(r'^\s*(?:(?:[A-Za-z_]\w*|\.)\s+)?"([^"]+)"\s*$')
+
+# Standard-library Go packages: short single-word paths and well-known
+# multi-word paths. Cheap heuristic to avoid even trying to resolve them.
+_GO_STDLIB_HINTS = (
+    "net/",
+    "encoding/",
+    "crypto/",
+    "io/",
+    "os/",
+    "path/",
+    "text/",
+    "html/",
+    "log/",
+    "regexp/",
+    "compress/",
+    "container/",
+    "database/",
+    "debug/",
+    "go/",
+    "image/",
+    "math/",
+    "mime/",
+    "runtime/",
+    "sync/",
+    "syscall/",
+    "testing/",
+    "unicode/",
+    "archive/",
+    "hash/",
+    "index/",
+    "reflect/",
+    "sort/",
+    "strconv/",
+    "time/",
+)
+
 _EXT_TO_LANG = {
     "py": "python",
     "js": "javascript",
@@ -45,10 +101,51 @@ _EXT_TO_LANG = {
     "ts": "typescript",
     "tsx": "typescript",
     "rb": "ruby",
+    "java": "java",
+    "go": "go",
 }
 
 _MAX_FILES = 8
 _MAX_PER_FILE_CHARS = 1500
+# Java/Go resolution is heuristic — picking the wrong file pollutes the
+# prompt with off-topic symbols and hurts more than it helps. Cap at 1
+# candidate so we either find the right file or skip cleanly.
+_MAX_CANDIDATES_PER_IMPORT = 1
+
+
+def _extract_go_import_paths(source: str) -> list[str]:
+    """Pull every imported package path from a Go source file.
+
+    Handles both forms:
+        import "foo"
+        import (
+            "first"
+            aliased "second"
+            // a comment
+        )
+    """
+    paths: list[str] = []
+    in_block = False
+    for raw in source.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        if line.startswith("import"):
+            if "(" in line and ")" not in line:
+                in_block = True
+                continue
+            m = _GO_SINGLE_IMPORT_RE.match(raw)
+            if m:
+                paths.append(m.group(1))
+            continue
+        if in_block:
+            if line == ")":
+                in_block = False
+                continue
+            m = _GO_BLOCK_PATH_RE.match(raw)
+            if m:
+                paths.append(m.group(1))
+    return paths
 
 
 def _ext(path: str) -> str:
@@ -113,12 +210,112 @@ def _candidates_ruby(import_path: str, source_path: str) -> list[str]:
     return [base if base.endswith(".rb") else f"{base}.rb"]
 
 
+def _candidates_java(fqn: str, repo_tree: set[str] | None) -> list[str]:
+    """Resolve a Java FQN like `com.foo.bar.Baz` to candidate file paths.
+
+    Java doesn't tell us where in the source tree a class lives — Maven and
+    Gradle layouts vary, and a sub-project may have its own `src/main/java`.
+    We use the class name from the FQN and ask the repo tree for any file
+    ending in `/<ClassName>.java`. With a unique class name the answer is
+    one or two files; with collisions we cap at 2.
+    """
+    if not fqn or fqn.endswith(".*") or repo_tree is None:
+        return []
+    parts = fqn.split(".")
+    # `import static com.foo.Bar.method` — drop the trailing lowercase
+    # method/field name so we resolve the enclosing class instead.
+    while parts and parts[-1] and parts[-1][0].islower():
+        parts = parts[:-1]
+    if len(parts) < 2:
+        return []
+    class_name = parts[-1]
+    if not class_name or not class_name[0].isupper():
+        return []
+    suffix = f"/{class_name}.java"
+    matches = [p for p in repo_tree if p.endswith(suffix) or p == f"{class_name}.java"]
+    # Prefer matches whose path also contains the package segment — that
+    # disambiguates `Util.java` files when there are several. Sort: more
+    # package-segment overlap first.
+    pkg_path = ".".join(parts[:-1])
+    matches.sort(key=lambda p: (-_path_overlap(p, pkg_path), len(p)))
+    return matches[:_MAX_CANDIDATES_PER_IMPORT]
+
+
+def _path_overlap(file_path: str, pkg_path: str) -> int:
+    """How many segments of pkg_path appear in file_path, in order."""
+    if not pkg_path:
+        return 0
+    fp_parts = file_path.split("/")
+    pkg_parts = pkg_path.split(".")
+    if not pkg_parts:
+        return 0
+    score = 0
+    j = 0
+    for seg in fp_parts:
+        if j < len(pkg_parts) and seg == pkg_parts[j]:
+            score += 1
+            j += 1
+    return score
+
+
+def _candidates_go(import_path: str, repo_tree: set[str] | None) -> list[str]:
+    """Resolve a Go import path like `github.com/grafana/grafana/pkg/x` to files.
+
+    Go imports are full module paths. We don't know this repo's module
+    name without parsing `go.mod`, so we use a tail-match heuristic: take
+    the path's last 2-3 segments and look for a directory in the repo
+    whose path ends with them. Then return up to N `.go` files in that
+    directory (skipping `*_test.go`).
+    """
+    if not import_path or repo_tree is None:
+        return []
+    # Drop quotes / spaces just in case.
+    p = import_path.strip().strip('"').strip()
+    if not p or p.startswith("."):
+        return []
+    # Skip common stdlib paths so we don't burn cycles.
+    if "/" not in p:
+        return []  # single-segment imports are stdlib (`strings`, `fmt`)
+    if p.startswith(_GO_STDLIB_HINTS):
+        return []
+
+    segs = p.split("/")
+    # Try progressively longer tail matches: last 3 segments first, then 2.
+    for tail_len in (3, 2):
+        if tail_len > len(segs):
+            continue
+        suffix = "/".join(segs[-tail_len:])
+        match_dir = f"/{suffix}/"
+        files = [
+            f
+            for f in repo_tree
+            if (match_dir in f"/{f}" or f"/{f}".endswith(f"/{suffix}"))
+            and f.endswith(".go")
+            and not f.endswith("_test.go")
+        ]
+        if files:
+            files.sort(key=len)
+            return files[:_MAX_CANDIDATES_PER_IMPORT]
+    return []
+
+
 def extract_import_candidates(
     source: str,
     language: str,
     source_path: str,
+    repo_tree: set[str] | None = None,
+    enable_java_go: bool = True,
 ) -> list[str]:
-    """Return candidate file paths referenced by imports in ``source``."""
+    """Return candidate file paths referenced by imports in ``source``.
+
+    ``repo_tree`` is required for Java and Go (their imports don't encode
+    enough information to reconstruct a path algorithmically — we have to
+    look at what files actually exist). Optional for the other languages.
+
+    ``enable_java_go`` lets the caller A/B disable the Java + Go resolvers
+    without pulling them out of the dispatch table; their resolution is
+    heuristic enough that it sometimes hurts on noisy repos.
+    """
     seen: set[str] = set()
     out: list[str] = []
 
@@ -140,6 +337,14 @@ def extract_import_candidates(
         for m in _RUBY_REQUIRE_RE.finditer(source):
             for c in _candidates_ruby(m.group(1), source_path):
                 add(c)
+    elif language == "java" and enable_java_go:
+        for m in _JAVA_IMPORT_RE.finditer(source):
+            for c in _candidates_java(m.group(1), repo_tree):
+                add(c)
+    elif language == "go" and enable_java_go:
+        for path in _extract_go_import_paths(source):
+            for c in _candidates_go(path, repo_tree):
+                add(c)
     return out
 
 
@@ -160,6 +365,7 @@ async def build_jit_cross_file_context(
     source_fetcher,  # SourceFetcher
     repo_tree: set[str] | None,
     char_budget: int = 12_000,
+    enable_java_go: bool = True,
 ) -> str:
     """Fetch source for files imported by the changed files and inline symbols.
 
@@ -202,7 +408,13 @@ async def build_jit_cross_file_context(
         if not source:
             continue
 
-        candidates = extract_import_candidates(source, lang, changed_file.path)
+        candidates = extract_import_candidates(
+            source,
+            lang,
+            changed_file.path,
+            repo_tree=repo_tree,
+            enable_java_go=enable_java_go,
+        )
 
         for cand in candidates:
             if files_added >= _MAX_FILES or chars_used >= char_budget:

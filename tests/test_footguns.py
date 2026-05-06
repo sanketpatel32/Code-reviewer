@@ -47,17 +47,49 @@ class TestGetFootguns:
         assert "### Python" not in out
         assert "TOCTOU" in out
 
-    def test_multi_language_pr_includes_all_relevant(self):
+    def test_multi_language_pr_includes_all_when_primary_only_false(self):
         out = get_footguns_for_files(
             [
                 _file("api/handler.py"),
                 _file("ui/main.tsx"),
                 _file("backend/server.go"),
-            ]
+            ],
+            primary_only=False,
         )
         assert "### Python" in out
         assert "### Typescript" in out
         assert "### Go" in out
+
+    def test_primary_only_picks_dominant_language(self):
+        # 3 Python files vs 1 TS file → Python wins.
+        out = get_footguns_for_files(
+            [
+                _file("api/a.py"),
+                _file("api/b.py"),
+                _file("api/c.py"),
+                _file("ui/main.tsx"),
+            ]
+        )
+        assert "### Python" in out
+        assert "### Typescript" not in out
+        assert "### Go" not in out
+        # Universal rules still render — they're cross-cutting.
+        assert "### Cross-language" in out
+
+    def test_primary_only_uses_total_changes_not_file_count(self):
+        # 1 Python file with 100 changes outweighs 5 TS files with 1 change each.
+        big_py = FileDiff(
+            path="api/big.py",
+            change_type=FileChangeType.MODIFIED,
+            language="",
+            added_lines=100,
+            deleted_lines=0,
+            hunks=[],
+        )
+        ts_files = [_file(f"ui/{n}.tsx") for n in "abcde"]
+        out = get_footguns_for_files([big_py, *ts_files])
+        assert "### Python" in out
+        assert "### Typescript" not in out
 
     def test_empty_input(self):
         # No files → only universal rules

@@ -88,6 +88,11 @@ pip install -e ".[dev,serve]"
 # Run tests
 pytest tests/ -v
 
+# Run the regression suite (hits real GitHub + LLM, ~$1, ~3 min).
+# Pinned PRs whose findings have flickered across iterations — run before
+# merging changes that touch prompts, the noise filter, or the engine.
+OPENROUTER_API_KEY=... GITHUB_TOKEN=... pytest -m eval -v
+
 # Lint
 ruff check src/ tests/
 

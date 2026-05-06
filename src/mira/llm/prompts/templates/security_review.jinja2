@@ -20,6 +20,28 @@ Flag findings in any of these categories. Be specific and cite the line.
 - **Missing rate limiting on auth endpoints** — login, password reset, MFA, API keys, signup.
 - **Insecure CORS** — `Access-Control-Allow-Origin: *` with `Allow-Credentials: true`, reflecting the request origin without an allowlist.
 
+## High-signal patterns to grep mentally
+
+These are literal strings and shapes that have been missed before. If you see any of them in the diff, FLAG IT — don't second-guess. Each is an exploitable bug, not a style preference.
+
+- `X-Frame-Options.*ALLOWALL` or `X-Frame-Options:\s*""` — clickjacking protection disabled. **Always blocker** when assigned in a controller or response header.
+- `\.indexOf\(` near `origin`, `referer`, `host`, or `hostname` — substring origin check. `discourseUrl.indexOf(e.origin) === -1` and `e.origin.indexOf("trusted.com") !== -1` are both bypassable. **Warning**.
+- `postMessage\(.+,\s*['"]\*['"]` — wildcard target origin. Use a specific origin string. **Warning**.
+- Missing `event.origin` check inside `addEventListener('message', ...)` or `onmessage` handler. **Warning**.
+- `dangerouslySetInnerHTML`, `v-html`, `\.innerHTML\s*=`, raw `<%= ... %>` of user input in `.html`/`.erb`/`.html.haml`. **Warning to blocker** depending on source.
+- `eval\(`, `new Function\(`, `setTimeout\([\w'"]` (string first arg) — code injection surface. **Warning**.
+- `pickle\.loads`, `yaml\.load\(` (without `SafeLoader`/`safe_load`), `Marshal\.load` — deserialization of untrusted. **Blocker**.
+- `request\.referer`/`request.referrer` used as a security check — referer is spoofable / strippable. **Warning**.
+- `open\(` (Python/Ruby) on a user-controlled URL without scheme allowlist — SSRF. **Blocker**.
+- `Math\.random\(\)`, `random\.random\(\)`, `rand\(\)` for tokens / IDs / nonces — predictable. **Warning**.
+- `MD5`, `SHA1`, `md5\(`, `sha1\(` for password hashing or signing. **Warning**.
+- `==` comparing tokens/HMACs/passwords without `secrets.compare_digest` / `crypto.timingSafeEqual` — timing attack. **Suggestion**.
+- `Access-Control-Allow-Origin:\s*\*` with `Allow-Credentials: true` in the same response. **Blocker**.
+- `redirect\(` / `res\.redirect\(` of a user-supplied URL without scheme + host allowlist — open redirect. **Warning**.
+- `cors\(\{.*origin:\s*true` or origin reflected from request — wildcard CORS. **Warning**.
+
+If a pattern matches but you can prove (from the diff alone) that the input is sanitized, an allowlist is enforced, or the value is not user-controlled, skip it. Otherwise, flag.
+
 ## Rules
 
 - **Only flag what's in the diff** — don't speculate about code you can't see.

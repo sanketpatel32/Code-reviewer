@@ -117,24 +117,54 @@ _UNIVERSAL: list[str] = [
 ]
 
 
-def get_footguns_for_files(files: list[FileDiff]) -> str:
+def _primary_language(files: list[FileDiff]) -> str | None:
+    """Pick the diff's primary language by total lines changed.
+
+    Multi-language PRs are rare; when they happen, packing every language's
+    footguns into the prompt dilutes attention. Picking the dominant
+    language and skipping the rest keeps the section focused.
+    """
+    score: dict[str, int] = {}
+    for f in files:
+        ext = f.path.rsplit(".", 1)[-1].lower() if "." in f.path else ""
+        lang = _EXT_TO_LANG.get(ext)
+        if not lang:
+            continue
+        score[lang] = score.get(lang, 0) + f.total_changes
+    if not score:
+        return None
+    # Sort: most changes wins; alphabetical break for determinism.
+    return sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+
+def get_footguns_for_files(files: list[FileDiff], primary_only: bool = True) -> str:
     """Return a markdown block of footgun rules for the languages in ``files``.
+
+    By default, only the diff's primary language (most lines changed) is
+    included — multi-language packing crowds the prompt and dilutes
+    attention. Pass ``primary_only=False`` to include every detected
+    language.
 
     Returns an empty string if no relevant languages are detected, so the
     review prompt's `{% if footguns %}` branch can skip the section cleanly.
     """
-    langs: set[str] = set()
-    for f in files:
-        ext = f.path.rsplit(".", 1)[-1].lower() if "." in f.path else ""
-        lang = _EXT_TO_LANG.get(ext)
-        if lang:
-            langs.add(lang)
+    if primary_only:
+        primary = _primary_language(files)
+        langs: list[str] = [primary] if primary else []
+    else:
+        seen: set[str] = set()
+        for f in files:
+            ext = f.path.rsplit(".", 1)[-1].lower() if "." in f.path else ""
+            lang = _EXT_TO_LANG.get(ext)
+            if lang:
+                seen.add(lang)
+        langs = sorted(seen)
 
     if not langs and not _UNIVERSAL:
         return ""
 
     parts: list[str] = []
-    for lang in sorted(langs):
+    for lang in langs:
         rules = _FOOTGUNS.get(lang)
         if not rules:
             continue

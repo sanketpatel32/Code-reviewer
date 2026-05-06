@@ -446,7 +446,7 @@ class GitHubProvider(BaseProvider):
     async def resolve_outdated_review_threads(self, pr_info: PRInfo) -> int:
         @_retry_transient
         async def _resolve() -> int:
-            # Phase 1: Paginate through review threads and collect bot-authored
+            # Step 1: Paginate through review threads and collect bot-authored
             # unresolved threads that GitHub has marked as outdated.
             bot_login: str | None = None
             thread_ids: list[str] = []
@@ -493,7 +493,7 @@ class GitHubProvider(BaseProvider):
                 len(thread_ids),
             )
 
-            # Phase 2: Resolve each collected outdated thread
+            # Step 2: Resolve each collected outdated thread
             for thread_id in thread_ids:
                 await self._graphql_request(_RESOLVE_THREAD_MUTATION, {"threadId": thread_id})
 

@@ -51,6 +51,25 @@ class TestParseLLMResponse:
         assert result.comments == []
         assert result.summary == ""
 
+    def test_parses_double_encoded_comments_array(self):
+        """Haiku occasionally returns ``comments`` as a stringified JSON
+        array — sometimes pretty-printed with raw newlines that strict
+        JSON rejects. The parser must recover both the outer and inner."""
+        inner = (
+            "[\n  {\n"
+            '    "path": "a.py",\n'
+            '    "line": 10,\n'
+            '    "body": "raw newlines inside the string",\n'
+            '    "existing_code": "x"\n'
+            "  }\n]"
+        )
+        # Outer JSON has the inner as a quoted string with raw newlines —
+        # invalid in strict mode, valid with strict=False.
+        raw = '{"comments": "' + inner.replace('"', '\\"') + '", "summary": ""}'
+        result = parse_llm_response(raw)
+        assert len(result.comments) == 1
+        assert result.comments[0].body == "raw newlines inside the string"
+
 
 class TestConvertToReviewComments:
     def test_converts_comments(self, sample_llm_response_text: str):
@@ -168,7 +187,8 @@ class TestExistingCodeValidation:
         assert len(comments) == 1
 
     def test_keeps_comment_without_existing_code(self):
-        """Comments without existing_code should pass through unchanged."""
+        """An empty/missing citation is permitted — only present-but-wrong
+        citations are dropped as hallucinations."""
         data = json.dumps(
             {
                 "comments": [

@@ -9,7 +9,7 @@ description = "AI-powered PR reviewer with low-noise filtering"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
-authors = [{ name = "Mira Contributors" }]
+authors = [{ name = "Mira Contributors", email = "support@miracode.ai" }]
 keywords = ["ai", "code-review", "pull-request", "llm"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -69,6 +69,10 @@ packages = ["src/mira"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "eval: regression suite that hits real GitHub + LLM APIs (skipped by default; opt-in with `-m eval`)",
+]
+addopts = "-m 'not eval'"
 
 [tool.ruff]
 target-version = "py311"

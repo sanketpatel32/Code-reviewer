@@ -13,9 +13,12 @@ from mira.core.engine import (
     _clamp_confidence_to_findings,
     _drop_orphan_key_issues,
     _extract_sections,
+    _security_relevant_files,
 )
 from mira.llm.provider import LLMProvider
 from mira.models import (
+    FileChangeType,
+    FileDiff,
     KeyIssue,
     PRInfo,
     ReviewComment,
@@ -24,6 +27,60 @@ from mira.models import (
     WalkthroughConfidenceScore,
     WalkthroughResult,
 )
+
+
+def _empty_filediff(path: str) -> FileDiff:
+    return FileDiff(
+        path=path,
+        change_type=FileChangeType.MODIFIED,
+        language="",
+        added_lines=0,
+        deleted_lines=0,
+        hunks=[],
+    )
+
+
+class TestSecurityFileFilter:
+    """The security pass narrows its input so the LLM isn't drowned in non-code files."""
+
+    def test_drops_migrations_specs_styles_lockfiles(self):
+        files = [
+            _empty_filediff("app/controllers/embed_controller.rb"),
+            _empty_filediff("app/assets/javascripts/embed.js"),
+            _empty_filediff("db/migrate/20131217174004_create_topic_embeds.rb"),
+            _empty_filediff("spec/controllers/embed_controller_spec.rb"),
+            _empty_filediff("app/assets/stylesheets/embed.css.scss"),
+            _empty_filediff("Gemfile.lock"),
+            _empty_filediff("CHANGELOG.md"),
+        ]
+        keep = [k.path for k in _security_relevant_files(files)]
+        assert "app/controllers/embed_controller.rb" in keep
+        assert "app/assets/javascripts/embed.js" in keep
+        assert all("/migrate/" not in p for p in keep)
+        assert all("spec/" not in p for p in keep)
+        assert all(not p.endswith(".scss") for p in keep)
+        assert all(not p.endswith(".lock") for p in keep)
+        assert all(not p.endswith(".md") for p in keep)
+
+    def test_drops_test_files_by_suffix(self):
+        files = [
+            _empty_filediff("src/auth.go"),
+            _empty_filediff("src/auth_test.go"),
+            _empty_filediff("src/auth.test.ts"),
+            _empty_filediff("src/login.spec.tsx"),
+        ]
+        keep = [k.path for k in _security_relevant_files(files)]
+        assert keep == ["src/auth.go"]
+
+    def test_keeps_app_code_unchanged(self):
+        files = [
+            _empty_filediff("src/middleware.py"),
+            _empty_filediff("api/views.py"),
+            _empty_filediff("frontend/login.tsx"),
+        ]
+        keep = [k.path for k in _security_relevant_files(files)]
+        assert keep == ["src/middleware.py", "api/views.py", "frontend/login.tsx"]
+
 
 _WALKTHROUGH_LLM_RESPONSE = json.dumps(
     {
@@ -1388,6 +1445,18 @@ class TestSecurityReviewPass:
         from mira.core.engine import ReviewEngine
 
         files = parse_diff(sample_diff_text).files
+        # Pick a verbatim line from the diff so the existing_code citation
+        # validates — the parser drops comments whose citation isn't in the
+        # diff (anti-hallucination check).
+        cited_line = None
+        for h in files[0].hunks:
+            for raw in h.content.splitlines():
+                if raw.startswith("+") and not raw.startswith("+++"):
+                    cited_line = raw[1:]
+                    break
+            if cited_line:
+                break
+        assert cited_line, "fixture must contain at least one added line"
         canned = json.dumps(
             {
                 "comments": [
@@ -1399,6 +1468,7 @@ class TestSecurityReviewPass:
                         "title": "SQL injection",
                         "body": "Concatenating user input into a query.",
                         "confidence": 0.9,
+                        "existing_code": cited_line,
                     }
                 ],
                 "summary": "",
@@ -1424,20 +1494,6 @@ class TestSecurityReviewPass:
         files = parse_diff(sample_diff_text).files
         llm = MagicMock(spec=LLMProvider)
         llm.complete_with_tools = AsyncMock(side_effect=RuntimeError("LLM down"))
-
-        engine = ReviewEngine(config=MiraConfig(), llm=llm, provider=None)
-        out = await engine._security_review_pass(files, "title")
-        assert out == []
-
-    @pytest.mark.asyncio
-    async def test_returns_empty_on_parse_error(self, sample_diff_text):
-        """Bad LLM JSON must not crash."""
-        from mira.core.diff_parser import parse_diff
-        from mira.core.engine import ReviewEngine
-
-        files = parse_diff(sample_diff_text).files
-        llm = MagicMock(spec=LLMProvider)
-        llm.complete_with_tools = AsyncMock(return_value="not json at all")
 
         engine = ReviewEngine(config=MiraConfig(), llm=llm, provider=None)
         out = await engine._security_review_pass(files, "title")

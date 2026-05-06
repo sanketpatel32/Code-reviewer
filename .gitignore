@@ -50,6 +50,12 @@ data/
 report.txt
 *.tmp
 
+# Benchmark reports — produced by local eval runs, not part of the release.
+BENCHMARK_REPORT*.md
+
+# Local eval-regression fixtures — repo-specific PR URLs and history.
+tests/eval_regressions/
+
 # Frontend
 ui/mira/node_modules/
 ui/mira/dist/

@@ -1772,9 +1772,9 @@ async def trigger_index(owner: str, repo: str, full: bool = False) -> dict:
 
             tracker.start(full_name)
             config = load_config()
-            # Use the configured indexing model (typically Haiku) — without
-            # this swap we'd silently fall back to the review model (Sonnet),
-            # ~3× slower and ~3× more expensive per token.
+            # Use the configured indexing model — without this swap we'd
+            # silently fall back to the review model, which is slower and
+            # more expensive per token.
             llm = LLMProvider(llm_config_for("indexing", config.llm))
             store = IndexStore.open(owner, repo)
             if full:

@@ -132,6 +132,12 @@ def main() -> None:
 @click.option("--output", "output_format", type=click.Choice(["text", "json"]), default="text")
 @click.option("--verbose", is_flag=True, help="Enable verbose logging")
 @click.option("--config", "config_path", default=None, help="Path to .mira.yml")
+@click.option(
+    "--no-walkthrough",
+    is_flag=True,
+    help="Skip walkthrough generation. Useful in dry-run loops where only the "
+    "inline review is needed and the extra LLM call should be saved.",
+)
 def review(
     pr_url: str | None,
     use_stdin: bool,
@@ -143,6 +149,7 @@ def review(
     output_format: str,
     verbose: bool,
     config_path: str | None,
+    no_walkthrough: bool,
 ) -> None:
     """Review a pull request or diff."""
     logging.basicConfig(
@@ -161,6 +168,8 @@ def review(
         overrides["filter.max_comments"] = max_comments
     if confidence is not None:
         overrides["filter.confidence_threshold"] = confidence
+    if no_walkthrough:
+        overrides["review.walkthrough"] = False
 
     try:
         config = load_config(config_path, overrides)

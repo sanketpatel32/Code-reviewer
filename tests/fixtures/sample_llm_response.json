@@ -9,6 +9,7 @@
       "title": "Shell injection via subprocess with shell=True",
       "body": "Using `subprocess.run` with `shell=True` and a user-provided string is vulnerable to shell injection. Use a list of arguments instead.",
       "confidence": 0.95,
+      "existing_code": "    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)",
       "suggestion": "    result = subprocess.run(cmd.split(), capture_output=True, text=True)"
     },
     {
@@ -20,6 +21,7 @@
       "title": "Use of eval() for parsing config",
       "body": "Using `eval()` to parse file contents is a critical security vulnerability. It allows arbitrary code execution. Use `json.load()` or `yaml.safe_load()` instead.",
       "confidence": 0.99,
+      "existing_code": "        return eval(f.read())",
       "suggestion": "        return json.loads(f.read())"
     },
     {
@@ -31,6 +33,7 @@
       "title": "Hardcoded default API key",
       "body": "The default value contains what looks like an API key. Default should be an empty string or None, with proper error handling when the key is missing.",
       "confidence": 0.85,
+      "existing_code": "    return os.environ.get(\"API_KEY\", \"sk-default-key-12345\")",
       "suggestion": "    return os.environ.get(\"API_KEY\", \"\")"
     }
   ],

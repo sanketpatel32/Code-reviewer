@@ -114,9 +114,9 @@ _SKIP_PATTERNS = [
 ]
 
 _FILE_FETCH_SEMAPHORE = 10
-# Concurrent LLM summarization batches per repo. Haiku handles 6-8
-# comfortably on OpenRouter; bumping from 3 nearly halves file-phase wall
-# time without changing quality.
+# Concurrent LLM summarization batches per repo. The indexing model
+# typically handles 6-8 comfortably on OpenRouter; bumping from 3 nearly
+# halves file-phase wall time without changing quality.
 _LLM_SEMAPHORE = 8
 # Smaller batches → faster individual calls → better wave parallelism.
 # Empirically a 5-file batch with one large file bloated to 7k output

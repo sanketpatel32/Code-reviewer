@@ -57,8 +57,13 @@ def parse_llm_response(raw_text: str) -> LLMReviewResponse:
     """Parse raw LLM text output into a validated LLMReviewResponse."""
     cleaned = strip_code_fences(raw_text)
 
+    # strict=False permits raw control chars (newlines/tabs) inside
+    # strings — some tool-calling models occasionally double-encode the
+    # comments array as a string containing pretty-printed JSON, and
+    # that pretty-printed JSON has literal newlines that strict mode
+    # rejects.
     try:
-        data = json.loads(cleaned)
+        data = json.loads(cleaned, strict=False)
     except json.JSONDecodeError as e:
         raise ResponseParseError(f"LLM response is not valid JSON: {e}") from e
 
@@ -160,11 +165,13 @@ def convert_to_review_comments(
         if c.suggestion and not c.body.strip():
             continue
 
-        # Validate existing_code against diff hunks
-        if c.existing_code and hunk_index:
+        # Validate existing_code against diff hunks (only when present —
+        # an empty/missing citation is permitted but a present-but-wrong
+        # one is dropped as hallucination).
+        if hunk_index and c.existing_code:
             hunk_text = hunk_index.get(c.path, "")
             if c.existing_code.strip() not in hunk_text:
-                continue  # hallucinated existing_code — drop
+                continue
 
         # Clear no-op suggestions (suggestion equals existing_code)
         suggestion = c.suggestion
@@ -237,17 +244,20 @@ _CHANGE_TYPE_MAP: dict[str, FileChangeType] = {
 def _unstring_nested_json(data: dict) -> dict:
     """Recursively parse string values that are valid JSON objects/arrays.
 
-    Some models (via tool calling) double-encode nested objects as JSON strings.
+    Some models (via tool calling) double-encode nested objects as JSON
+    strings — for example returning the ``comments`` array as
+    ``"[{...}, {...}]"`` instead of a real list. We try strict JSON first,
+    then ``strict=False`` to tolerate raw control chars (newlines inside
+    strings).
     """
     result = {}
     for key, value in data.items():
         if isinstance(value, str):
-            try:
-                parsed = json.loads(value)
+            stripped = value.strip()
+            if stripped.startswith(("[", "{")):
+                parsed = _try_load_json(stripped)
                 if isinstance(parsed, (dict, list)):
                     value = parsed
-            except (json.JSONDecodeError, TypeError):
-                pass
         if isinstance(value, dict):
             value = _unstring_nested_json(value)
         elif isinstance(value, list):
@@ -256,6 +266,18 @@ def _unstring_nested_json(data: dict) -> dict:
             ]
         result[key] = value
     return result
+
+
+def _try_load_json(text: str) -> object | None:
+    """Best-effort parse: strict, then lenient (control chars allowed)."""
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    try:
+        return json.loads(text, strict=False)
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 def parse_walkthrough_response(raw_text: str) -> LLMWalkthroughResponse:

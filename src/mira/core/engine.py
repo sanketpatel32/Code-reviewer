@@ -17,7 +17,10 @@ from mira.core.priority import rank_files
 from mira.exceptions import ResponseParseError
 from mira.index.context import build_code_context
 from mira.index.store import IndexStore
-from mira.llm.prompts.review import build_review_prompt, build_walkthrough_prompt
+from mira.llm.prompts.review import (
+    build_review_prompt,
+    build_walkthrough_prompt,
+)
 from mira.llm.prompts.verify_fixes import build_verify_fixes_prompt, parse_verify_fixes_response
 from mira.llm.provider import LLMProvider
 from mira.llm.response_parser import (
@@ -90,6 +93,81 @@ def _clamp_confidence_to_findings(
 
 _MAX_FULL_FILE_LINES = 500
 _LARGE_FILE_CONTEXT_LINES = 50  # ±50 lines = 100-line window
+
+
+# Path patterns where security findings are extremely unlikely. Used to
+# narrow the dedicated security pass — see _security_review_pass. We keep
+# this conservative: every excluded category is "shouldn't house auth /
+# crypto / origin / injection logic." When uncertain, keep the file.
+_SECURITY_PASS_SKIP_PATTERNS = (
+    # DB migrations: schema changes, indexes — no request handling.
+    "db/migrate/",
+    "/migrations/",
+    # Tests: assertions about behavior, not the behavior itself.
+    "spec/",
+    "/__tests__/",
+    "/__fixtures__/",
+    "/fixtures/",
+    # Docs and changelogs.
+    ".md",
+    ".rst",
+    ".txt",
+    "CHANGELOG",
+    "LICENSE",
+    # Pure styles: extremely rare attack surface; XSS through CSS would
+    # show up in the embedded JS or template, not the .scss.
+    ".css",
+    ".scss",
+    ".less",
+    ".sass",
+    # Lockfiles: package manager output, not application code.
+    ".lock",
+    "package-lock.json",
+    "yarn.lock",
+    "Pipfile.lock",
+    # Common build / vendor output, in case file_filter let it through.
+    "/dist/",
+    "/build/",
+    "/vendor/",
+    "/node_modules/",
+)
+
+_SECURITY_TEST_SUFFIXES = (
+    "_test.go",
+    "_test.py",
+    "_spec.rb",
+    "_spec.js",
+    "_spec.ts",
+    ".test.js",
+    ".test.jsx",
+    ".test.ts",
+    ".test.tsx",
+    ".spec.js",
+    ".spec.jsx",
+    ".spec.ts",
+    ".spec.tsx",
+)
+
+
+def _security_relevant_files(files: list) -> list:
+    """Return the subset of files plausibly containing security findings.
+
+    The dedicated security pass runs as one LLM call across the entire
+    diff. When the diff is dominated by migrations / specs / lockfiles,
+    those non-code files dilute attention away from the actual vulnerable
+    code. This filter trims the obvious-no-finding cases so the model can
+    focus.
+    """
+    keep = []
+    for f in files:
+        path = f.path
+        lower = path.lower()
+        if any(p in lower for p in _SECURITY_PASS_SKIP_PATTERNS):
+            continue
+        if any(lower.endswith(s) for s in _SECURITY_TEST_SUFFIXES):
+            continue
+        keep.append(f)
+    return keep
 
 
 def _select_files_by_priority(
@@ -779,6 +857,7 @@ class ReviewEngine:
                                 source_fetcher=source_fetcher,
                                 repo_tree=tree_paths,
                                 char_budget=(self.config.review.context_token_budget * 4),
+                                enable_java_go=self.config.review.jit_java_go,
                             )
                             if jit:
                                 ctx = ctx + "\n\n" + jit
@@ -978,10 +1057,10 @@ class ReviewEngine:
                     )
                     return [], [], ""
 
-        # Run main chunked review and the dedicated security pass in
-        # parallel. Security findings get merged into all_comments and go
-        # through the same noise filter (dedup catches any overlap with
-        # main-pass findings on the same line).
+        # Run the main chunked review and the security pass in parallel.
+        # Security findings get merged into all_comments and go through the
+        # same noise filter (dedup catches any overlap with main-pass
+        # findings on the same line).
         review_task = _asyncio.gather(*[_review_chunk(i, c) for i, c in enumerate(chunks)])
         security_task = _asyncio.create_task(
             self._security_review_pass(filtered, pr_title)
@@ -1013,8 +1092,7 @@ class ReviewEngine:
         # Self-critique pass — re-verify each draft comment before posting.
         # Catches confident-but-wrong claims (the LLM's own analysis errors)
         # that the noise filter can't catch because confidence scores are
-        # also LLM-generated. Uses the cheap indexing-tier model so the
-        # added cost is ~$0.001 per review.
+        # also LLM-generated. Runs on the configured indexing model.
         if final_comments and self.config.review.self_critique:
             try:
                 final_comments = await self._self_critique(final_comments)
@@ -1169,11 +1247,23 @@ class ReviewEngine:
         if not files:
             return []
 
+        # Narrow input to files where security findings are plausible.
+        # On large diffs, migrations / lockfiles / fixtures / tests drown
+        # out the actual vulnerable code. With them in the prompt the model
+        # can miss explicit patterns (`X-Frame-Options: "ALLOWALL"`) that
+        # the prompt's category list calls out by name.
+        narrowed = _security_relevant_files(files)
+        if not narrowed:
+            # All files were filtered out — fall back to the original set
+            # rather than skip the pass entirely. A PR that's purely
+            # migrations / specs CAN still introduce auth/permission bugs.
+            narrowed = files
+
         from mira.llm.prompts.review import build_security_review_prompt
         from mira.llm.provider import SUBMIT_REVIEW_TOOL
 
         try:
-            messages = build_security_review_prompt(files=files, pr_title=pr_title)
+            messages = build_security_review_prompt(files=narrowed, pr_title=pr_title)
             raw = await self.llm.complete_with_tools(
                 messages=messages,
                 tools=[SUBMIT_REVIEW_TOOL],
@@ -1209,9 +1299,9 @@ class ReviewEngine:
         prove this is a real, actionable issue?* Comments without verifiable
         citations or with confidently-wrong analysis get dropped.
 
-        Uses the cheap indexing-tier model (Haiku-class) — the critic is a
-        verification step, not a generation step. Returns the kept comments
-        in their original order.
+        Uses the configured indexing model — the critic is a verification
+        step, not a generation step. Returns the kept comments in their
+        original order.
         """
         import json as _json
 
@@ -1235,6 +1325,7 @@ class ReviewEngine:
                 f"    Body:  {(c.body or '').strip()[:500]}\n"
                 f"    Cites: {cited or '(no code citation)'}\n"
             )
+
         critic_prompt = (
             "You are reviewing draft PR comments produced by another reviewer. "
             "Your job is to filter out confidently-wrong analyses, speculation, "
@@ -1253,7 +1344,7 @@ class ReviewEngine:
             "## Draft comments\n\n" + "\n".join(draft_lines)
         )
 
-        # Use the indexing-tier (cheap) model — critique is a verification
+        # Use the configured indexing model — critique is a verification
         # task, not generation. Falls back to the review model if no
         # indexing model is configured.
         try:
@@ -1306,8 +1397,8 @@ class ReviewEngine:
         mention issues that never got filed (LLM put them in prose only) or
         that were later dropped by noise filter / self-critique / orphan
         filter. Regenerate from the surviving structured outputs using the
-        cheap indexing-tier model so the prose can't lie about what's in the
-        Key Issues table or the inline comments.
+        configured indexing model so the prose stays grounded in the Key
+        Issues table and inline comments that actually shipped.
         """
         if not comments and not key_issues:
             return "No issues found."

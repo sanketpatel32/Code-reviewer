@@ -72,6 +72,142 @@ class TestExtractImportCandidates:
         cands = extract_import_candidates("import x", "rust", "main.rs")
         assert cands == []
 
+    def test_java_resolves_fqn_via_repo_tree(self):
+        src = (
+            "package com.acme.svc;\n"
+            "import com.acme.crypto.KeystoreFactory;\n"
+            "import static com.acme.util.Validators.requireNonNull;\n"
+        )
+        tree = {
+            "src/main/java/com/acme/svc/Main.java",
+            "src/main/java/com/acme/crypto/KeystoreFactory.java",
+            "src/main/java/com/acme/util/Validators.java",
+        }
+        cands = extract_import_candidates(
+            src, "java", "src/main/java/com/acme/svc/Main.java", repo_tree=tree
+        )
+        assert "src/main/java/com/acme/crypto/KeystoreFactory.java" in cands
+        assert "src/main/java/com/acme/util/Validators.java" in cands
+
+    def test_java_drops_wildcard_imports(self):
+        src = "import com.acme.crypto.*;\n"
+        tree = {"src/main/java/com/acme/crypto/Foo.java"}
+        cands = extract_import_candidates(src, "java", "Main.java", repo_tree=tree)
+        assert cands == []
+
+    def test_java_prefers_path_with_matching_package(self):
+        # Two files named Util.java exist in different packages — the one in
+        # the imported package should win.
+        src = "import com.acme.crypto.Util;\n"
+        tree = {
+            "src/main/java/com/acme/web/Util.java",
+            "src/main/java/com/acme/crypto/Util.java",
+        }
+        cands = extract_import_candidates(src, "java", "Main.java", repo_tree=tree)
+        assert cands[0] == "src/main/java/com/acme/crypto/Util.java"
+
+    def test_go_resolves_module_path_tail(self):
+        src = (
+            "package x\n\nimport (\n"
+            '    "github.com/grafana/grafana/pkg/services/auth/anon"\n'
+            '    "fmt"\n'
+            ")\n"
+        )
+        tree = {
+            "pkg/services/auth/anon/store.go",
+            "pkg/services/auth/anon/store_test.go",  # excluded
+            "pkg/services/auth/anon/anon.go",
+            "fmt/fmt.go",  # accidental match — this isn't really stdlib but we skip "fmt" by stdlib hint
+        }
+        cands = extract_import_candidates(src, "go", "pkg/svc/handler.go", repo_tree=tree)
+        assert (
+            "pkg/services/auth/anon/store.go" in cands or "pkg/services/auth/anon/anon.go" in cands
+        )
+        # Test files are excluded
+        assert all("_test.go" not in p for p in cands)
+        # `fmt` skipped as stdlib
+        assert "fmt/fmt.go" not in cands
+
+    def test_go_skips_stdlib_imports(self):
+        src = 'import (\n    "net/http"\n    "encoding/json"\n)\n'
+        tree = {"net/http/foo.go", "encoding/json/bar.go"}
+        cands = extract_import_candidates(src, "go", "main.go", repo_tree=tree)
+        assert cands == []
+
+    def test_returns_empty_when_repo_tree_missing(self):
+        # Java + Go need the tree; without it they should return nothing
+        # rather than guess.
+        src = "import com.acme.svc.Foo;\n"
+        cands = extract_import_candidates(src, "java", "Main.java", repo_tree=None)
+        assert cands == []
+        cands_go = extract_import_candidates('import "x/y/z"\n', "go", "main.go", repo_tree=None)
+        assert cands_go == []
+
+    def test_go_does_not_match_string_constants_or_struct_tags(self):
+        """Quoted strings in the body of a Go file aren't imports."""
+        src = (
+            "package main\n\n"
+            'import (\n    "real/import/path"\n)\n\n'
+            "type User struct {\n"
+            '    Name string `json:"name" db:"users.name"`\n'
+            "}\n\n"
+            'var greeting = "hello world"\n'
+            'func f() error { return fmt.Errorf("not an import") }\n'
+        )
+        tree = {
+            "real/import/path/file.go",
+            "users.name/file.go",  # would falsely match the loose regex
+            "hello world/file.go",
+        }
+        cands = extract_import_candidates(src, "go", "main.go", repo_tree=tree)
+        # Only the real import should resolve.
+        assert cands == ["real/import/path/file.go"]
+
+    def test_go_block_with_alias(self):
+        src = (
+            'import (\n    foo "real/path/foo"\n    . "real/path/dot"\n    _ "real/path/blank"\n)\n'
+        )
+        tree = {
+            "real/path/foo/x.go",
+            "real/path/dot/y.go",
+            "real/path/blank/z.go",
+        }
+        cands = extract_import_candidates(src, "go", "main.go", repo_tree=tree)
+        # Aliased and blank-imports should still resolve.
+        assert any("real/path/foo" in p for p in cands)
+        assert any("real/path/dot" in p for p in cands)
+        assert any("real/path/blank" in p for p in cands)
+
+    def test_enable_java_go_false_skips_resolution(self):
+        java_src = "import com.acme.crypto.Keystore;\n"
+        java_tree = {"src/main/java/com/acme/crypto/Keystore.java"}
+        assert (
+            extract_import_candidates(
+                java_src, "java", "Main.java", repo_tree=java_tree, enable_java_go=False
+            )
+            == []
+        )
+        go_src = 'import "real/path"\n'
+        go_tree = {"real/path/x.go"}
+        assert (
+            extract_import_candidates(
+                go_src, "go", "main.go", repo_tree=go_tree, enable_java_go=False
+            )
+            == []
+        )
+
+    def test_java_capped_at_one_candidate(self):
+        # If a class name appears in many files, we should return exactly one
+        # — better to miss than to flood the prompt with off-topic matches.
+        src = "import com.acme.svc.Util;\n"
+        tree = {
+            "a/b/c/Util.java",
+            "x/y/z/Util.java",
+            "deep/nested/path/Util.java",
+        }
+        cands = extract_import_candidates(src, "java", "Main.java", repo_tree=tree)
+        assert len(cands) == 1
+
 
 class TestBuildJITContext:
     @pytest.mark.asyncio
