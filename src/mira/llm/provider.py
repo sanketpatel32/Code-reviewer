@@ -326,6 +326,8 @@ class LLMProvider:
         only attached when targeting OpenRouter; other endpoints get a clean
         portable header set. Authorization is omitted entirely if the
         endpoint needs no key (Ollama, llama.cpp, etc.)."""
+        if hasattr(self, "_cached_headers"):
+            return dict(self._cached_headers)
         headers: dict[str, str] = {"Content-Type": "application/json"}
         key = _get_api_key(self.config)
         if key:
@@ -333,7 +335,8 @@ class LLMProvider:
         if _is_openrouter(self.config.base_url):
             headers["HTTP-Referer"] = "https://github.com/miracodeai/mira"
             headers["X-Title"] = "Mira Code Reviewer"
-        return headers
+        self._cached_headers = headers
+        return dict(headers)
 
     @retry(
         stop=stop_after_attempt(3),
