@@ -311,21 +311,9 @@ class GitHubProvider(BaseProvider):
                     exc.data,
                 )
 
-            # Fallback: post each comment individually via the standalone
-            # /comments endpoint (``create_review_comment``) rather than
-            # wrapping each in another /reviews call. The /reviews endpoint
-            # has stricter atomicity validation that returns vague 422s
-            # for some valid-looking requests; /comments accepts the same
-            # request shape with more lenient checking. We accept the
-            # tradeoff that the inlines aren't grouped under a single
-            # "review" object — they still appear as inline comments on
-            # the PR, which is what the user actually sees.
-            #
-            # We log the *full* 422 body for each skipped comment rather
-            # than assuming "line not in diff" — GitHub also returns 422
-            # with vague "internal error" bodies for things like stale
-            # commit refs and validation hiccups, and conflating those
-            # with line-mismatch loses important diagnostic info.
+            # Per-comment fallback via /comments — looser 422 validation
+            # than /reviews. Inlines aren't grouped under a review object,
+            # but they still show up on the PR.
             posted = 0
             for rc in review_comments:
                 try:
@@ -480,8 +468,6 @@ class GitHubProvider(BaseProvider):
     async def resolve_outdated_review_threads(self, pr_info: PRInfo) -> int:
         @_retry_transient
         async def _resolve() -> int:
-            # Step 1: Paginate through review threads and collect bot-authored
-            # unresolved threads that GitHub has marked as outdated.
             bot_login: str | None = None
             thread_ids: list[str] = []
             total_unresolved = 0
@@ -527,7 +513,6 @@ class GitHubProvider(BaseProvider):
                 len(thread_ids),
             )
 
-            # Step 2: Resolve each collected outdated thread
             for thread_id in thread_ids:
                 await self._graphql_request(_RESOLVE_THREAD_MUTATION, {"threadId": thread_id})
 
@@ -792,9 +777,6 @@ class GitHubProvider(BaseProvider):
                 return None
             cursor = page.get("endCursor")
             if cursor is None:
-                # Defensive: GitHub shouldn't ever return hasNextPage=True with
-                # a null endCursor, but a malformed response would otherwise
-                # send the same query forever.
                 logger.warning(
                     "hasNextPage=True but endCursor is None for comment %s; stopping pagination",
                     comment_node_id,
