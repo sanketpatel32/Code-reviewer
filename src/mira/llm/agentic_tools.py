@@ -225,9 +225,7 @@ class AgenticToolExecutor:
 
         hits: list[str] = []
         files_scanned = 0
-        # Keep this small — we're scanning files via the source_fetcher so
-        # each file is a network call. The intent is to find a known signal,
-        # not crawl the whole repo.
+        # Each scanned file is a network round-trip via source_fetcher; keep tight.
         max_files_to_scan = 15
 
         for cand in candidates:
