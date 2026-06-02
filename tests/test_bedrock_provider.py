@@ -10,7 +10,9 @@ import pytest
 from mira.config import LLMConfig
 from mira.exceptions import LLMError
 
-boto3 = pytest.importorskip("boto3", reason="boto3 not installed (install with: pip install mira-reviewer[bedrock])")
+boto3 = pytest.importorskip(
+    "boto3", reason="boto3 not installed (install with: pip install mira-reviewer[bedrock])"
+)
 
 
 def _bedrock_config(**kwargs) -> LLMConfig:
