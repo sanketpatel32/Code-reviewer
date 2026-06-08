@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import re
 
-_THINK_RE = re.compile(r"<think>.*?", re.DOTALL)
+# Match a full <think>…</think> block. MiniMax has been seen to close with
+# either </think> or </thinking>, so accept both.
+_THINK_RE = re.compile(r"<think>.*?</think(?:ing)?>", re.DOTALL)
 
 
 def strip_think_blocks(text: str | None) -> str:
