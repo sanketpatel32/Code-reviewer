@@ -618,11 +618,20 @@ async def index_repo(
                     indexed_count,
                 )
                 raise IndexingCancelled(indexed_count)
-            results = await fut
+            try:
+                results = await fut
+            except Exception as exc:
+                # Skip a failed batch and keep going — one bad batch shouldn't
+                # abort the repo (and aborting leaves the other tasks burning tokens).
+                logger.warning("Skipping a summarization batch for %s/%s: %s", owner, repo, exc)
+                continue
             for path, content, data in results:
-                summary = _build_file_summary(path, content, data)
-                store.upsert_summary(summary)
-                indexed_count += 1
+                try:
+                    summary = _build_file_summary(path, content, data)
+                    store.upsert_summary(summary)
+                    indexed_count += 1
+                except Exception as exc:
+                    logger.warning("Skipping file %s in %s/%s: %s", path, owner, repo, exc)
     except IndexingCancelled:
         raise
 

@@ -451,9 +451,14 @@ class PgIndexStore(_StoreSharedMixin):
                 (self._owner, self._repo, summary.path),
             )
             for sym in summary.symbols:
+                # Two symbols can share a name in one file (overloads, or LLM
+                # dupes) and collide on the PK — keep the last, don't crash.
                 cur.execute(
                     "INSERT INTO symbols (owner, repo, file_path, name, kind, signature, description) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (owner, repo, file_path, name) DO UPDATE SET "
+                    "kind=EXCLUDED.kind, signature=EXCLUDED.signature, "
+                    "description=EXCLUDED.description",
                     (
                         self._owner,
                         self._repo,

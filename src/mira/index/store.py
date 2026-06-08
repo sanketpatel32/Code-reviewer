@@ -379,8 +379,10 @@ class IndexStore(_StoreSharedMixin):
         )
         self._conn.execute("DELETE FROM symbols WHERE file_path = ?", (summary.path,))
         for sym in summary.symbols:
+            # Two symbols can share a name in one file (overloads, or LLM dupes)
+            # and collide on the PK — keep the last, don't raise.
             self._conn.execute(
-                "INSERT INTO symbols (file_path, name, kind, signature, description) "
+                "INSERT OR REPLACE INTO symbols (file_path, name, kind, signature, description) "
                 "VALUES (?, ?, ?, ?, ?)",
                 (summary.path, sym.name, sym.kind, sym.signature, sym.description),
             )
