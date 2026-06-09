@@ -16,6 +16,8 @@ import { ReposPage } from "@/pages/repos"
 import { SettingsPage } from "@/pages/settings"
 import { SetupPage } from "@/pages/setup"
 import { RulesPage } from "@/pages/rules"
+import { ChangePasswordPage } from "@/pages/change-password"
+import { ResetUserPasswordPage } from "@/pages/reset-user-password"
 import { UserFormPage } from "@/pages/user-form"
 import { UsersPage } from "@/pages/users"
 import { VulnerabilitiesPage } from "@/pages/vulnerabilities"
@@ -200,6 +202,11 @@ export function App() {
           <Route path="vulnerabilities" element={<VulnerabilitiesPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="users/new" element={<UserFormPage />} />
+          <Route
+            path="users/:id/password"
+            element={<ResetUserPasswordPage />}
+          />
+          <Route path="account/password" element={<ChangePasswordPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

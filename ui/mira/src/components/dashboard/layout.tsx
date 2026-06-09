@@ -15,7 +15,7 @@ import {
   Users,
 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { NavLink, Outlet, useLocation } from "react-router"
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router"
 
 import { useTheme } from "@/components/theme-provider"
 import { useAuth } from "@/lib/auth"
@@ -53,9 +53,7 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { SetPasswordDialog } from "@/components/ui/set-password-dialog"
 import { UserAvatar } from "@/components/ui/user-avatar"
-import { api } from "@/lib/api"
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -79,6 +77,8 @@ const PAGE_LABELS: Record<string, string> = {
   settings: "Settings",
   users: "Users",
   new: "New",
+  account: "Account",
+  password: "Password",
 }
 
 function AppBreadcrumb() {
@@ -236,7 +236,7 @@ export function DashboardLayout() {
 function UserMenu() {
   const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
-  const [showPassword, setShowPassword] = useState(false)
+  const navigate = useNavigate()
   if (!user) return null
 
   const isDark =
@@ -276,7 +276,7 @@ function UserMenu() {
             {isDark ? "Light mode" : "Dark mode"}
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => setShowPassword(true)}
+            onClick={() => navigate("/account/password")}
             className="gap-2 py-1 text-xs [&_svg]:size-3.5"
           >
             <KeyRound /> Change password
@@ -291,17 +291,6 @@ function UserMenu() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <SetPasswordDialog
-        open={showPassword}
-        onOpenChange={setShowPassword}
-        title="Change password"
-        requireCurrent
-        submitLabel="Update password"
-        onSubmit={async (current, next) => {
-          await api.changePassword(current, next)
-        }}
-      />
     </SidebarMenuItem>
   )
 }

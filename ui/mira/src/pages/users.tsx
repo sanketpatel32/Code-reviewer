@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ConfirmButton } from "@/components/ui/confirm-button"
-import { SetPasswordDialog } from "@/components/ui/set-password-dialog"
 import {
   Table,
   TableBody,
@@ -45,10 +44,6 @@ export function UsersPage() {
   const navigate = useNavigate()
   const [refreshKey, setRefreshKey] = useState(0)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [resetUser, setResetUser] = useState<{
-    id: number
-    username: string
-  } | null>(null)
   const { data: users, loading } = useAsync(() => api.listUsers(), [refreshKey])
 
   if (!currentUser?.is_admin) {
@@ -155,9 +150,7 @@ export function UsersPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            onClick={() =>
-                              setResetUser({ id: u.id, username: u.username })
-                            }
+                            onClick={() => navigate(`/users/${u.id}/password`)}
                           >
                             <KeyRound className="h-3.5 w-3.5" />
                           </Button>
@@ -190,21 +183,6 @@ export function UsersPage() {
       {deleteError && (
         <p className="text-sm break-words text-destructive">{deleteError}</p>
       )}
-
-      <SetPasswordDialog
-        open={resetUser !== null}
-        onOpenChange={(open) => !open && setResetUser(null)}
-        title="Reset password"
-        description={
-          resetUser
-            ? `Set a new password for "${resetUser.username}".`
-            : undefined
-        }
-        submitLabel="Reset password"
-        onSubmit={async (_current, next) => {
-          if (resetUser) await api.resetUserPassword(resetUser.id, next)
-        }}
-      />
     </div>
   )
 }
