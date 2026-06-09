@@ -234,8 +234,6 @@ function UserMenu() {
   const { theme, setTheme } = useTheme()
   if (!user) return null
 
-  const role = user.is_admin ? "Admin" : "User"
-
   const isDark =
     theme === "dark" ||
     (theme === "system" &&
@@ -260,10 +258,7 @@ function UserMenu() {
         <DropdownMenuTrigger asChild>
           <SidebarMenuButton size="lg">
             <UserAvatar seed={user.username} className="size-7" />
-            <div className="flex flex-col leading-tight">
-              <span className="text-xs font-medium">{user.username}</span>
-              <span className="text-[10px] text-muted-foreground">{role}</span>
-            </div>
+            <span className="text-xs font-medium">{user.username}</span>
             <ChevronsUpDown className="ml-auto size-4" />
           </SidebarMenuButton>
         </DropdownMenuTrigger>
