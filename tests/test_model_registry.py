@@ -58,6 +58,9 @@ def test_override_adds_and_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyP
     f = tmp_path / "models.json"
     f.write_text(json.dumps(custom))
     monkeypatch.setenv("MIRA_MODELS_JSON_PATH", str(f))
+    # Required (not redundant with the fixture): all_models() was already called
+    # above to read `bundled`, which populated the lru_cache before the env var
+    # was set. Clear it so the call below re-reads with the override in place.
     registry._load.cache_clear()
 
     models = registry.all_models()
@@ -83,7 +86,6 @@ def test_custom_entry_without_cost_fields_does_not_crash(
         json.dumps({"local/llama": {"label": "Local", "purposes": ["review"]}})
     )
     monkeypatch.setenv("MIRA_MODELS_JSON_PATH", str(f))
-    registry._load.cache_clear()
 
     assert registry.is_supported("local/llama", purpose="review")
     # Falls back to default pricing rather than raising KeyError.
@@ -92,7 +94,6 @@ def test_custom_entry_without_cost_fields_does_not_crash(
 
 def test_missing_override_falls_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MIRA_MODELS_JSON_PATH", str(tmp_path / "nope.json"))
-    registry._load.cache_clear()
     # No crash; bundled models still load.
     assert registry.all_models()
 
@@ -101,5 +102,4 @@ def test_invalid_override_falls_back(tmp_path: Path, monkeypatch: pytest.MonkeyP
     bad = tmp_path / "models.json"
     bad.write_text("{ not valid json ")
     monkeypatch.setenv("MIRA_MODELS_JSON_PATH", str(bad))
-    registry._load.cache_clear()
     assert registry.all_models()
