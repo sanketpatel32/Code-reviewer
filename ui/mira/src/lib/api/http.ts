@@ -44,10 +44,16 @@ export async function deleteJson(path: string): Promise<void> {
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`)
 }
 
-export async function patchJson<T>(path: string): Promise<T> {
+export async function patchJson<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "PATCH",
     credentials: "include",
+    ...(body !== undefined
+      ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : {}),
   })
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`)
   return res.json() as Promise<T>

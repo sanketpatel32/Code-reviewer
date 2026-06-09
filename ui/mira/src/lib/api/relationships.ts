@@ -28,7 +28,7 @@ export const relationshipsApi = {
 
   deleteOverride: (source_repo: string, target_repo: string) =>
     deleteJson(
-      `/api/relationships/overrides?source_repo=${source_repo}&target_repo=${target_repo}`
+      `/api/relationships/overrides?source_repo=${encodeURIComponent(source_repo)}&target_repo=${encodeURIComponent(target_repo)}`
     ),
 
   listOverrides: () =>
