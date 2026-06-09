@@ -263,13 +263,20 @@ function UserMenu() {
             <ChevronsUpDown className="ml-auto size-4" />
           </SidebarMenuButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="min-w-52">
-          <DropdownMenuItem onClick={toggleTheme}>
+        <DropdownMenuContent side="top" align="start" className="min-w-40">
+          <DropdownMenuItem
+            onClick={toggleTheme}
+            className="gap-2 py-1 text-xs [&_svg]:size-3.5"
+          >
             {isDark ? <Sun /> : <Moon />}
             {isDark ? "Light mode" : "Dark mode"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={logout}>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={logout}
+            className="gap-2 py-1 text-xs [&_svg]:size-3.5"
+          >
             <LogOut /> Log out
           </DropdownMenuItem>
         </DropdownMenuContent>
