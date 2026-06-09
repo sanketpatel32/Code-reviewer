@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -43,6 +44,8 @@ export function WebhookFormPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<{
     ok: boolean
@@ -122,10 +125,15 @@ export function WebhookFormPage() {
     }
   }
 
-  const remove = async () => {
+  const confirmDelete = async () => {
     if (!id) return
-    await api.deleteWebhook(id)
-    navigate("/settings/webhooks")
+    setDeleting(true)
+    try {
+      await api.deleteWebhook(id)
+      navigate("/settings/webhooks")
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const test = async () => {
@@ -280,7 +288,7 @@ export function WebhookFormPage() {
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={remove}
+                  onClick={() => setConfirmOpen(true)}
                   className="text-destructive"
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -290,6 +298,17 @@ export function WebhookFormPage() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Delete webhook?"
+        description={`"${name || "Untitled"}" will stop receiving events. This can't be undone.`}
+        confirmLabel="Delete"
+        destructive
+        loading={deleting}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

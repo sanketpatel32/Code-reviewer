@@ -12,6 +12,7 @@ import { useNavigate } from "react-router"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import {
   Table,
   TableBody,
@@ -52,6 +53,8 @@ export function WebhooksPage() {
   const [testResult, setTestResult] = useState<
     Record<string, { ok: boolean; detail: string }>
   >({})
+  const [pendingDelete, setPendingDelete] = useState<Webhook | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   if (!user?.is_admin) {
     return (
@@ -74,9 +77,16 @@ export function WebhooksPage() {
     }
   }
 
-  const remove = async (id: string) => {
-    await api.deleteWebhook(id)
-    setRefreshKey((k) => k + 1)
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    try {
+      await api.deleteWebhook(pendingDelete.id)
+      setPendingDelete(null)
+      setRefreshKey((k) => k + 1)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const toggleEnabled = async (w: Webhook) => {
@@ -219,7 +229,7 @@ export function WebhooksPage() {
                           variant="ghost"
                           size="icon-sm"
                           title="Delete"
-                          onClick={() => remove(w.id)}
+                          onClick={() => setPendingDelete(w)}
                         >
                           <Trash2 className="h-3.5 w-3.5 text-destructive" />
                         </Button>
@@ -243,6 +253,17 @@ export function WebhooksPage() {
           </Table>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Delete webhook?"
+        description={`"${pendingDelete?.name || "Untitled"}" will stop receiving events. This can't be undone.`}
+        confirmLabel="Delete"
+        destructive
+        loading={deleting}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }
