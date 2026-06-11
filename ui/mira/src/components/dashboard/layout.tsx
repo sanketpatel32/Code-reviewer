@@ -2,8 +2,10 @@ import {
   BookOpen,
   Brain,
   ChevronRight,
+  ChevronsUpDown,
   Database,
   GitFork,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Moon,
@@ -14,7 +16,7 @@ import {
   Users,
 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { NavLink, Outlet, useLocation } from "react-router"
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router"
 
 import { useTheme } from "@/components/theme-provider"
 import { api } from "@/lib/api"
@@ -37,6 +39,13 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -55,6 +64,7 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { UserAvatar } from "@/components/ui/user-avatar"
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -84,6 +94,9 @@ const PAGE_LABELS: Record<string, string> = {
   learnings: "Learnings",
   settings: "Settings",
   users: "Users",
+  new: "New",
+  account: "Account",
+  password: "Password",
   models: "Models",
   review: "Review",
   webhooks: "Webhooks",
@@ -209,11 +222,6 @@ export function DashboardLayout() {
                   </div>
                   <div className="flex flex-col leading-tight">
                     <span className="text-sm font-semibold">Mira</span>
-                    {version && (
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        v{version}
-                      </span>
-                    )}
                   </div>
                 </a>
               </SidebarMenuButton>
@@ -233,7 +241,11 @@ export function DashboardLayout() {
                   // aria-current keeps a single source of truth instead of
                   // recomputing the match here.
                   <SidebarMenuItem key={item.to}>
-                    <SidebarMenuButton asChild className={navActive}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={item.label}
+                      className={navActive}
+                    >
                       <NavLink to={item.to} end={item.to === "/"}>
                         <item.icon />
                         <span>{item.label}</span>
@@ -282,11 +294,13 @@ export function DashboardLayout() {
 
         <SidebarFooter>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <ThemeToggle />
-            </SidebarMenuItem>
             <UserMenu />
           </SidebarMenu>
+          {version && (
+            <span className="px-2 pb-1 text-[10px] text-muted-foreground tabular-nums group-data-[collapsible=icon]:hidden">
+              v{version}
+            </span>
+          )}
         </SidebarFooter>
 
         <SidebarRail />
@@ -307,20 +321,9 @@ export function DashboardLayout() {
 
 function UserMenu() {
   const { user, logout } = useAuth()
-  if (!user) return null
-
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton size="sm" onClick={logout}>
-        <LogOut className="h-4 w-4" />
-        <span className="text-xs">{user.username}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  )
-}
-
-function ThemeToggle() {
   const { theme, setTheme } = useTheme()
+  const navigate = useNavigate()
+  if (!user) return null
 
   const isDark =
     theme === "dark" ||
@@ -328,11 +331,10 @@ function ThemeToggle() {
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches)
 
-  const next = () => {
+  const toggleTheme = () => {
     const newTheme = isDark ? "light" : "dark"
     setTheme(newTheme)
-    // Save to user profile in DB
-    const API_BASE = import.meta.env.VITE_API_URL || ""
+    // Persist to the user profile in the DB.
     fetch(`${API_BASE}/api/auth/theme`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -342,9 +344,39 @@ function ThemeToggle() {
   }
 
   return (
-    <SidebarMenuButton size="sm" onClick={next}>
-      {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-      <span className="text-xs">{isDark ? "Dark" : "Light"}</span>
-    </SidebarMenuButton>
+    <SidebarMenuItem>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuButton size="lg">
+            <UserAvatar seed={user.username} className="size-7" />
+            <span className="text-xs font-medium">{user.username}</span>
+            <ChevronsUpDown className="ml-auto size-4" />
+          </SidebarMenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="min-w-40">
+          <DropdownMenuItem
+            onClick={toggleTheme}
+            className="gap-2 py-1 text-xs [&_svg]:size-3.5"
+          >
+            {isDark ? <Sun /> : <Moon />}
+            {isDark ? "Light mode" : "Dark mode"}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => navigate("/account/password")}
+            className="gap-2 py-1 text-xs [&_svg]:size-3.5"
+          >
+            <KeyRound /> Change password
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={logout}
+            className="gap-2 py-1 text-xs [&_svg]:size-3.5"
+          >
+            <LogOut /> Log out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SidebarMenuItem>
   )
 }
