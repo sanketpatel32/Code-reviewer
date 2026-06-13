@@ -8,6 +8,8 @@ parallel so wall clock stays roughly flat.
 
 from __future__ import annotations
 
+import copy
+
 from mira.core.noise_filter import _is_duplicate
 from mira.models import ReviewComment
 
@@ -45,7 +47,7 @@ def merge_ensemble_runs(
         votes = len({run_idx for run_idx, _ in cluster})
         if votes < min_votes:
             continue
-        rep = max(cluster, key=lambda pair: pair[1].confidence)[1]
+        rep = copy.copy(max(cluster, key=lambda pair: pair[1].confidence)[1])
         rep.confidence = round(sum(c.confidence for _, c in cluster) / len(cluster), 3)
         merged.append(rep)
     return merged

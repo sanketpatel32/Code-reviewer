@@ -23,6 +23,7 @@ def _api_keys_present() -> bool:
 
 
 @pytest.mark.benchmark
+@pytest.mark.asyncio
 async def test_f1_scorecard() -> None:
     if not _api_keys_present():
         pytest.skip("OPENROUTER_API_KEY (or OPENAI_API_KEY) and GITHUB_TOKEN required")
