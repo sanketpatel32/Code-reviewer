@@ -93,6 +93,18 @@ class TestParseSummarizeResponse:
         result = _parse_summarize_response(raw)
         assert len(result) == 1
 
+    def test_unescaped_backslash_in_string(self):
+        # DeepSeek-style: PHP namespace backslashes left unescaped (issue #96).
+        raw = '{"files": [{"path": "a.php", "summary": "Model in \\App\\Models namespace"}]}'
+        result = _parse_summarize_response(raw)
+        assert len(result) == 1
+        assert result[0]["summary"] == "Model in \\App\\Models namespace"
+
+    def test_valid_escapes_preserved(self):
+        raw = json.dumps({"files": [{"path": "a.py", "summary": 'tab\there "quote"'}]})
+        result = _parse_summarize_response(raw)
+        assert result[0]["summary"] == 'tab\there "quote"'
+
 
 class TestStripCodeFences:
     def test_json_fence(self):
@@ -141,6 +153,20 @@ class TestBuildFileSummary:
         assert fs.path == "empty.py"
         assert fs.symbols == []
         assert fs.imports == []
+
+    def test_null_symbol_fields_coerced(self):
+        # Models emit explicit nulls; columns are NOT NULL (issue #96).
+        data = {"symbols": [{"name": "foo", "kind": None, "signature": None, "description": None}]}
+        fs = _build_file_summary("a.py", "content", data)
+        assert len(fs.symbols) == 1
+        assert fs.symbols[0].kind == "function"
+        assert fs.symbols[0].signature == ""
+        assert fs.symbols[0].description == ""
+
+    def test_nameless_symbol_skipped(self):
+        data = {"symbols": [{"name": None, "signature": "x"}, {"name": "ok"}]}
+        fs = _build_file_summary("a.py", "content", data)
+        assert [s.name for s in fs.symbols] == ["ok"]
 
 
 @pytest.mark.asyncio

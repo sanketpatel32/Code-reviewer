@@ -366,41 +366,89 @@ def _strip_code_fences(raw: str) -> str:
     return text.strip()
 
 
+_VALID_JSON_ESCAPES = set('"\\/bfnrtu')
+
+
+def _escape_lone_backslashes(text: str) -> str:
+    """Escape backslashes that aren't part of a valid JSON escape sequence.
+
+    Models like DeepSeek mention PHP namespaces (``\\App\\Models``) or Windows
+    paths in summaries and emit the backslashes unescaped, so json.loads bails
+    with "Invalid \\escape". We walk string literals and double any backslash
+    that doesn't start a real escape, consuming valid escapes as pairs so an
+    escaped quote is never mistaken for a string boundary.
+    """
+    out: list[str] = []
+    in_string = False
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if not in_string:
+            if ch == '"':
+                in_string = True
+            out.append(ch)
+            i += 1
+        elif ch == "\\":
+            nxt = text[i + 1] if i + 1 < n else ""
+            if nxt in _VALID_JSON_ESCAPES:
+                out.append(ch + nxt)
+                i += 2
+            else:
+                out.append("\\\\")
+                i += 1
+        else:
+            if ch == '"':
+                in_string = False
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
 def _parse_summarize_response(raw: str) -> list[dict[str, Any]]:
     """Parse the LLM response from the summarization prompt."""
     text = strip_think_blocks(_strip_code_fences(raw))
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict) and "files" in data:
-            result: list[dict[str, Any]] = data["files"]
-            return result
-        if isinstance(data, list):
-            return list(data)
-        logger.warning(
-            "Summarization response has unexpected structure (keys: %s): %s",
-            list(data.keys()) if isinstance(data, dict) else type(data).__name__,
-            text[:200],
-        )
+    # strict=False tolerates raw newlines in strings; a repair pass for lone
+    # backslashes salvages otherwise-valid responses from models that don't
+    # escape paths/namespaces, so one bad string doesn't drop the whole batch.
+    data: Any = None
+    for candidate in (text, _escape_lone_backslashes(text)):
+        try:
+            data = json.loads(candidate, strict=False)
+            break
+        except (json.JSONDecodeError, TypeError):
+            continue
+    else:
+        logger.warning("Failed to parse summarization response: %s", raw[:300])
         return []
-    except (json.JSONDecodeError, TypeError) as exc:
-        logger.warning(
-            "Failed to parse summarization response (%s): %s",
-            exc,
-            raw[:300],
-        )
-        return []
+
+    if isinstance(data, dict) and "files" in data:
+        result: list[dict[str, Any]] = data["files"]
+        return result
+    if isinstance(data, list):
+        return list(data)
+    logger.warning(
+        "Summarization response has unexpected structure (keys: %s): %s",
+        list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+        text[:200],
+    )
+    return []
 
 
 def _build_file_summary(path: str, content: str, file_data: dict[str, Any]) -> FileSummary:
     """Convert LLM output for a single file into a FileSummary."""
     symbols = []
     for sym in file_data.get("symbols", []):
+        name = sym.get("name") or ""
+        if not name:
+            continue
+        # `or ""` not `get(key, "")` — models emit explicit nulls that the
+        # default wouldn't catch, and these columns are NOT NULL.
         symbols.append(
             SymbolInfo(
-                name=sym.get("name", ""),
-                kind=sym.get("kind", "function"),
-                signature=sym.get("signature", ""),
-                description=sym.get("description", ""),
+                name=name,
+                kind=sym.get("kind") or "function",
+                signature=sym.get("signature") or "",
+                description=sym.get("description") or "",
             )
         )
 
