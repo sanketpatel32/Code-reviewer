@@ -45,7 +45,7 @@ import { useAsync, useDocumentTitle } from "@/lib/hooks"
 import { cn } from "@/lib/utils"
 
 const ALL_REPOS = "__all__"
-const PAGE_SIZE = 20
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 const LIVE_INTERVAL_SECS = 10
 
 // Subtle inset ring shared by every pill on the page.
@@ -241,6 +241,7 @@ export function ActivityPage() {
   const [live, setLive] = useState(false)
   const [countdown, setCountdown] = useState(LIVE_INTERVAL_SECS)
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(20)
   // `selected` holds the PR being shown; `panelOpen` drives the slide
   // animation. We keep `selected` set during the close transition so the
   // content doesn't vanish before the panel finishes sliding out.
@@ -342,21 +343,25 @@ export function ActivityPage() {
   // Pagination. Reset to the first page whenever the result set changes shape.
   useEffect(() => {
     setPage(0)
-  }, [debouncedSearch, repo, windowSel, sort.key, sort.dir])
+  }, [debouncedSearch, repo, windowSel, sort.key, sort.dir, pageSize])
 
-  const totalPages = Math.max(1, Math.ceil(sortedPRs.length / PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(sortedPRs.length / pageSize))
   const safePage = Math.min(page, totalPages - 1)
   const pagedPRs = sortedPRs.slice(
-    safePage * PAGE_SIZE,
-    safePage * PAGE_SIZE + PAGE_SIZE,
+    safePage * pageSize,
+    safePage * pageSize + pageSize,
   )
-  const rangeStart = sortedPRs.length === 0 ? 0 : safePage * PAGE_SIZE + 1
-  const rangeEnd = Math.min(sortedPRs.length, safePage * PAGE_SIZE + PAGE_SIZE)
+  const rangeStart = sortedPRs.length === 0 ? 0 : safePage * pageSize + 1
+  const rangeEnd = Math.min(sortedPRs.length, safePage * pageSize + pageSize)
 
   const refresh = () => setRefreshKey((k) => k + 1)
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
+    // Fill the viewport below the top nav (h-12 = 3rem) and clip, so only the
+    // table body scrolls rather than the whole page. h-full won't resolve here
+    // because the layout's <main> height comes from flex-grow under a
+    // min-h-svh wrapper (no definite height for a percentage child).
+    <div className="flex h-[calc(100svh-3rem)] flex-col gap-4 overflow-hidden p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
@@ -465,10 +470,20 @@ export function ActivityPage() {
           <span
             className={cn(
               "h-2 w-2 rounded-full",
-              live ? "animate-pulse bg-current" : "bg-muted-foreground",
+              live ? "animate-pulse bg-green-500" : "bg-muted-foreground",
             )}
           />
-          {live ? `Live · ${countdown}s` : "Live"}
+          {live ? (
+            <span>
+              Live ·{" "}
+              <span className="inline-block w-[2ch] text-right tabular-nums">
+                {countdown}
+              </span>
+              s
+            </span>
+          ) : (
+            "Live"
+          )}
         </Button>
       </div>
 
@@ -489,7 +504,7 @@ export function ActivityPage() {
           </div>
         ) : (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="themed-scrollbar min-h-0 flex-1 overflow-y-auto">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
@@ -551,9 +566,29 @@ export function ActivityPage() {
 
             {/* Pagination, pinned under the scrolling table */}
             <div className="flex shrink-0 items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
-              <span>
-                {rangeStart}–{rangeEnd} of {sortedPRs.length} PRs
-              </span>
+              <div className="flex items-center gap-3">
+                <span>
+                  {rangeStart}–{rangeEnd} of {sortedPRs.length} PRs
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span>Rows:</span>
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={(v) => setPageSize(Number(v))}
+                  >
+                    <SelectTrigger className="h-7 w-[4.25rem] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAGE_SIZE_OPTIONS.map((n) => (
+                        <SelectItem key={n} value={String(n)}>
+                          {n}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="tabular-nums">
                   Page {safePage + 1} / {totalPages}
