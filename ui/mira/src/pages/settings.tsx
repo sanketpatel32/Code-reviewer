@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { toast } from "@/components/ui/sonner"
 import { useParams } from "react-router"
 
 import { api } from "@/lib/api"
@@ -97,10 +98,19 @@ export function SettingsPage() {
 
   const saveModels = async () => {
     setSavingModels(true)
-    await api.saveModels(indexingModel, reviewModel, thinkingMode)
-    setSavingModels(false)
-    setModelsSaved(true)
-    setTimeout(() => setModelsSaved(false), 2000)
+    try {
+      await api.saveModels(indexingModel, reviewModel, thinkingMode)
+      setModelsSaved(true)
+      setTimeout(() => setModelsSaved(false), 2000)
+      toast.success("Model settings saved", {
+        description: `Indexing: ${indexingModel}`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not save model settings", { description: msg })
+    } finally {
+      setSavingModels(false)
+    }
   }
 
   const setOverride = (
@@ -128,6 +138,7 @@ export function SettingsPage() {
       await api.saveGlobalSettings(body)
       setOverridesSaved(true)
       setTimeout(() => setOverridesSaved(false), 2000)
+      toast.success("Settings saved")
       const fresh = await api.getGlobalSettings()
       setEffective(
         (fresh.effective as {

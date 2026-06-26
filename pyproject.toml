@@ -59,6 +59,19 @@ bedrock = [
 
 [project.scripts]
 mira = "mira.cli:main"
+# Dev workflow shortcuts — run with `uv run <name>`.
+dev = "mira.dev_commands:dev"
+prod = "mira.dev_commands:prod"
+lint = "mira.dev_commands:lint"
+lint-fix = "mira.dev_commands:lint_fix"
+format = "mira.dev_commands:format_code"
+typecheck = "mira.dev_commands:typecheck"
+test = "mira.dev_commands:test"
+test-cov = "mira.dev_commands:test_cov"
+build-ui = "mira.dev_commands:build_ui"
+dev-ui = "mira.dev_commands:dev_ui"
+check = "mira.dev_commands:check"
+doctor = "mira.dev_commands:doctor"
 
 [project.urls]
 Homepage = "https://github.com/miracodeai/mira"

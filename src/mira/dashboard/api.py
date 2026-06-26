@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -757,6 +758,81 @@ def delete_uninstall_data(installation_id: int) -> dict:
     removed = _app_db.delete_repos_by_installation(installation_id)
     _app_db.remove_pending_uninstall(installation_id)
     return {"ok": True, "removed": removed}
+
+
+class AddRepoRequest(BaseModel):
+    """Body for the manual add-repo endpoint.
+
+    Accepts a GitHub identifier in any common shape:
+      - "owner/repo"
+      - "https://github.com/owner/repo"
+      - "https://github.com/owner/repo.git"
+      - "git@github.com:owner/repo.git"
+    """
+
+    repo: str
+
+
+_REPO_PATH_RE = re.compile(
+    r"(?:github\.com[:/])?([^/]+)/([^/]+?)(?:\.git)?(?:/)?$"
+)
+
+
+def _parse_repo_identifier(raw: str) -> tuple[str, str]:
+    """Extract (owner, repo) from a flexible GitHub URL/slug input."""
+    cleaned = raw.strip()
+    # ssh form: git@github.com:owner/repo.git
+    if cleaned.startswith("git@"):
+        cleaned = cleaned.split(":", 1)[1] if ":" in cleaned else cleaned
+    # strip protocol + host for https urls
+    cleaned = re.sub(r"^https?://", "", cleaned)
+    cleaned = cleaned.removeprefix("github.com/")
+    match = _REPO_PATH_RE.search(cleaned)
+    if not match:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not parse owner/repo. Use 'owner/repo' or a GitHub URL.",
+        )
+    owner, repo = match.group(1), match.group(2)
+    if not owner or not repo or "/" in repo:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid owner/repo: {raw!r}"
+        )
+    return owner, repo
+
+
+@router.post("/api/repos", response_model=RepoListItem)
+def add_repo(body: AddRepoRequest) -> RepoListItem:
+    """Manually register a repo without a GitHub App installation.
+
+    Useful for local/self-hosted setups or when you want to index and
+    review a public repo without wiring up webhooks.
+    """
+    owner, repo = _parse_repo_identifier(body.repo)
+    record = _app_db.register_repo(owner, repo, installation_id=0)
+    return RepoListItem(
+        owner=record.owner,
+        repo=record.repo,
+        status=record.status,
+        index_mode=record.index_mode,
+        file_count=record.files_indexed,
+        file_count_estimate=record.file_count_estimate,
+        installation_id=record.installation_id,
+        error=record.error,
+        last_indexed=datetime.fromtimestamp(record.last_indexed_at, tz=UTC).isoformat()
+        if record.last_indexed_at
+        else None,
+    )
+
+
+@router.delete("/api/repos/{owner}/{repo}")
+def remove_repo(owner: str, repo: str) -> dict:
+    """Remove a manually-added repo from the registry."""
+    existing = _app_db.get_repo(owner, repo)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"Repo {owner}/{repo} not found")
+    _app_db.delete_repo(owner, repo)
+    return {"ok": True}
 
 
 @router.post("/api/repos/sync")

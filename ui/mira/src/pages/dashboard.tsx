@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router"
 import {
   Area,
   AreaChart,
@@ -108,6 +109,27 @@ export function DashboardPage() {
                 {activeJobs.map((j) => j.repo).join(", ")}
               </p>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Onboarding banner — only for fresh installs with no repos */}
+      {!statsLoading && (stats?.total_repos ?? 0) === 0 && (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="text-base font-medium">Welcome to Mira 👋</p>
+              <p className="text-sm text-muted-foreground">
+                Add a repository to start indexing code, scanning for
+                vulnerabilities, and reviewing pull requests.
+              </p>
+            </div>
+            <Link
+              to="/repos"
+              className="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Add a repository
+            </Link>
           </CardContent>
         </Card>
       )}

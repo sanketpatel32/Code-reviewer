@@ -132,5 +132,41 @@
     "supports_json_mode": false,
     "purposes": ["review"],
     "recommended_for": []
+  },
+
+  "poolside/laguna-m.1:free": {
+    "label": "Laguna M.1 (Free)",
+    "provider": "poolside",
+    "max_input_tokens": 128000,
+    "max_output_tokens": 16384,
+    "input_cost_per_1m": 0.0,
+    "output_cost_per_1m": 0.0,
+    "supports_json_mode": true,
+    "purposes": ["indexing", "review"],
+    "recommended_for": ["indexing", "review"]
+  },
+
+  "meta-llama/llama-4-maverick:free": {
+    "label": "Llama 4 Maverick (Free)",
+    "provider": "meta-llama",
+    "max_input_tokens": 1000000,
+    "max_output_tokens": 16384,
+    "input_cost_per_1m": 0.0,
+    "output_cost_per_1m": 0.0,
+    "supports_json_mode": true,
+    "purposes": ["indexing", "review"],
+    "recommended_for": []
+  },
+
+  "google/gemma-3-27b-it:free": {
+    "label": "Gemma 3 27B (Free)",
+    "provider": "google",
+    "max_input_tokens": 96000,
+    "max_output_tokens": 8192,
+    "input_cost_per_1m": 0.0,
+    "output_cost_per_1m": 0.0,
+    "supports_json_mode": true,
+    "purposes": ["indexing", "review"],
+    "recommended_for": []
   }
 }

@@ -1,9 +1,10 @@
-import { Loader2, Search } from "lucide-react"
+import { Loader2, Plus, Search, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -11,8 +12,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "@/components/ui/sonner"
 import { api, type RepoListItem } from "@/lib/api"
 import { useDocumentTitle } from "@/lib/hooks"
 
@@ -23,6 +33,12 @@ export function ReposPage() {
   const [searchParams] = useSearchParams()
   // Seed the filter from `?owner=` so breadcrumb links can pre-filter the list.
   const [search, setSearch] = useState(searchParams.get("owner") ?? "")
+
+  // Add-repo dialog state
+  const [addOpen, setAddOpen] = useState(false)
+  const [addValue, setAddValue] = useState("")
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
 
   // Initial load + poll while any repo is indexing
   useEffect(() => {
@@ -42,13 +58,63 @@ export function ReposPage() {
       r.repo.toLowerCase().includes(search.toLowerCase()),
   )
 
+  async function handleAddRepo() {
+    setAdding(true)
+    setAddError(null)
+    try {
+      const created = await api.addRepo(addValue)
+      setRepos((prev) => {
+        const exists = prev.some(
+          (r) => r.owner === created.owner && r.repo === created.repo,
+        )
+        return exists
+          ? prev.map((r) =>
+              r.owner === created.owner && r.repo === created.repo ? created : r,
+            )
+          : [created, ...prev]
+      })
+      toast.success("Repository added", {
+        description: `${created.owner}/${created.repo} is ready to index.`,
+      })
+      setAddValue("")
+      setAddOpen(false)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setAddError(msg)
+      toast.error("Could not add repository", { description: msg })
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  async function handleRemoveRepo(owner: string, repo: string) {
+    try {
+      await api.removeRepo(owner, repo)
+      setRepos((prev) =>
+        prev.filter((r) => !(r.owner === owner && r.repo === repo)),
+      )
+      toast.success("Repository removed", {
+        description: `${owner}/${repo} was unregistered.`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not remove repository", { description: msg })
+    }
+  }
+
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Repositories</h1>
-        <p className="text-sm text-muted-foreground">
-          All repositories and their indexing status
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Repositories</h1>
+          <p className="text-sm text-muted-foreground">
+            All repositories and their indexing status
+          </p>
+        </div>
+        <Button onClick={() => setAddOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Repo
+        </Button>
       </div>
 
       {/* Indexing banner */}
@@ -111,39 +177,106 @@ export function ReposPage() {
                   .slice(0, 2)
 
                 return (
-                  <Link
-                    key={key}
-                    to={`/repos/${r.owner}/${r.repo}`}
-                    className="flex items-center"
-                  >
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback>{initials}</AvatarFallback>
-                    </Avatar>
-                    <div className="ml-4 space-y-1">
-                      <p className="text-sm font-medium leading-none">
-                        {r.repo}
-                      </p>
-                      <p className="text-sm text-muted-foreground">{r.owner}</p>
-                    </div>
-                    <div className="ml-auto flex items-center gap-2">
-                      <StatusBadge status={r.status} error={r.error} />
-                      {r.status === "ready" && (
-                        <span className="text-sm font-medium">
-                          {r.file_count} files
-                        </span>
-                      )}
-                    </div>
-                  </Link>
+                  <div key={key} className="group flex items-center">
+                    <Link
+                      to={`/repos/${r.owner}/${r.repo}`}
+                      className="flex flex-1 items-center"
+                    >
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback>{initials}</AvatarFallback>
+                      </Avatar>
+                      <div className="ml-4 space-y-1">
+                        <p className="text-sm font-medium leading-none">
+                          {r.repo}
+                        </p>
+                        <p className="text-sm text-muted-foreground">{r.owner}</p>
+                      </div>
+                      <div className="ml-auto flex items-center gap-2 pr-2">
+                        <StatusBadge status={r.status} error={r.error} />
+                        {r.status === "ready" && (
+                          <span className="text-sm font-medium">
+                            {r.file_count} files
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
+                      title={`Remove ${r.owner}/${r.repo}`}
+                      onClick={() => handleRemoveRepo(r.owner, r.repo)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 )
               })}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              No repositories found.
-            </p>
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+              <div className="rounded-full bg-muted p-3">
+                <Plus className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium">No repositories yet</p>
+                <p className="text-sm text-muted-foreground">
+                  Add a GitHub repo to start indexing and reviewing.
+                </p>
+              </div>
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add your first repo
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Add Repo dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Repository</DialogTitle>
+            <DialogDescription>
+              Register a GitHub repo manually. No GitHub App installation
+              required.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Input
+              placeholder="owner/repo  or  https://github.com/owner/repo"
+              value={addValue}
+              onChange={(e) => setAddValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && addValue.trim() && !adding) {
+                  handleAddRepo()
+                }
+              }}
+              autoFocus
+            />
+            {addError && (
+              <p className="text-sm text-destructive">{addError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAddOpen(false)}
+              disabled={adding}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddRepo}
+              disabled={!addValue.trim() || adding}
+            >
+              {adding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Add
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { toast } from "@/components/ui/sonner"
 import { api, type RepoListItem, type RuleModel } from "@/lib/api"
 import { useAsync, useDocumentTitle } from "@/lib/hooks"
 
@@ -54,29 +55,43 @@ export function RulesPage() {
         setGlobalRules((prev) =>
           prev.map((r) => (r.id === updated.id ? updated : r)),
         )
+        toast.success("Global rule updated")
       } else {
         const created = await api.createGlobalRule(
           editingGlobal.title,
           editingGlobal.content,
         )
         setGlobalRules((prev) => [created, ...prev])
+        toast.success("Global rule created")
       }
       setEditingGlobal(null)
-    } catch {
-      // TODO: toast
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not save rule", { description: msg })
     }
   }
 
   const deleteGlobal = async (id: number) => {
-    await api.deleteGlobalRule(id)
-    setGlobalRules((prev) => prev.filter((r) => r.id !== id))
+    try {
+      await api.deleteGlobalRule(id)
+      setGlobalRules((prev) => prev.filter((r) => r.id !== id))
+      toast.success("Global rule deleted")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not delete rule", { description: msg })
+    }
   }
 
   const toggleGlobal = async (id: number) => {
-    const updated = await api.toggleGlobalRule(id)
-    setGlobalRules((prev) =>
-      prev.map((r) => (r.id === updated.id ? updated : r)),
-    )
+    try {
+      const updated = await api.toggleGlobalRule(id)
+      setGlobalRules((prev) =>
+        prev.map((r) => (r.id === updated.id ? updated : r)),
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not toggle rule", { description: msg })
+    }
   }
 
   // Per-repo rules
@@ -109,6 +124,7 @@ export function RulesPage() {
         setRepoRules((prev) =>
           prev.map((r) => (r.id === updated.id ? updated : r)),
         )
+        toast.success("Repo rule updated")
       } else {
         const created = await api.createRepoRule(
           owner,
@@ -117,18 +133,26 @@ export function RulesPage() {
           editingRepo.content,
         )
         setRepoRules((prev) => [created, ...prev])
+        toast.success("Repo rule created")
       }
       setEditingRepo(null)
-    } catch {
-      // TODO: toast
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not save rule", { description: msg })
     }
   }
 
   const deleteRepo = async (id: number) => {
     if (!selectedRepo) return
     const [owner, repo] = selectedRepo.split("/")
-    await api.deleteRepoRule(owner, repo, id)
-    setRepoRules((prev) => prev.filter((r) => r.id !== id))
+    try {
+      await api.deleteRepoRule(owner, repo, id)
+      setRepoRules((prev) => prev.filter((r) => r.id !== id))
+      toast.success("Repo rule deleted")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not delete rule", { description: msg })
+    }
   }
 
   return (

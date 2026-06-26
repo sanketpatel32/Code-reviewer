@@ -15,6 +15,15 @@ import type {
 export const reposApi = {
   listRepos: () => fetchJson<RepoListItem[]>("/api/repos"),
 
+  // Manually register a repo by URL or "owner/repo" slug.
+  // No GitHub App installation required.
+  addRepo: (repo: string) =>
+    postJson<RepoListItem>("/api/repos", { repo }),
+
+  // Remove a repo from the registry (manual removal).
+  removeRepo: (owner: string, repo: string) =>
+    deleteJson(`/api/repos/${owner}/${repo}`),
+
   getRepo: (owner: string, repo: string) =>
     fetchJson<RepoDetail>(`/api/repos/${owner}/${repo}`),
 

@@ -111,7 +111,13 @@ class GitHubAppAuth:
         return slug if isinstance(slug, str) and slug else None
 
     async def list_installations(self) -> list[dict[str, object]]:
-        """List all installations for this GitHub App."""
+        """List all installations for this GitHub App.
+
+        Returns an empty list (with a single concise warning) when the App
+        isn't reachable — e.g. when running locally with a dummy private
+        key, or no App is installed. This keeps the dashboard usable for
+        manually-added repos without 401 spam on every poll.
+        """
         app_jwt = self._generate_jwt()
         headers = {
             "Authorization": f"Bearer {app_jwt}",
@@ -123,6 +129,18 @@ class GitHubAppAuth:
         async with httpx.AsyncClient() as client:
             while url:
                 resp = await client.get(url, headers=headers)
+                if resp.status_code == 401:
+                    # One concise line instead of per-poll spam. Most common case:
+                    # local dev with a dummy key, or no GitHub App installed.
+                    if not getattr(self, "_warned_no_app", False):
+                        logger.info(
+                            "GitHub App not reachable (HTTP 401). Running in "
+                            "standalone mode — manual repos only. Set a real "
+                            "MIRA_GITHUB_PRIVATE_KEY + install the App to enable "
+                            "webhook reviews."
+                        )
+                        self._warned_no_app = True
+                    return []
                 if resp.status_code != 200:
                     logger.warning(
                         "Failed to list installations (HTTP %d): %s",
