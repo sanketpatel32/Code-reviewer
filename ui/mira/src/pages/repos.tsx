@@ -1,10 +1,11 @@
-import { Loader2, Plus, Search, Trash2 } from "lucide-react"
+import { Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ConfirmButton } from "@/components/ui/confirm-button"
 import {
   Card,
   CardContent,
@@ -30,6 +31,7 @@ export function ReposPage() {
   useDocumentTitle("Repositories")
   const [repos, setRepos] = useState<RepoListItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [searchParams] = useSearchParams()
   // Seed the filter from `?owner=` so breadcrumb links can pre-filter the list.
   const [search, setSearch] = useState(searchParams.get("owner") ?? "")
@@ -40,17 +42,32 @@ export function ReposPage() {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
-  // Initial load + poll while any repo is indexing
-  useEffect(() => {
-    const load = () => {
-      api.listRepos().then(setRepos).finally(() => setLoading(false))
-    }
-    load()
-    const interval = setInterval(load, 5000)
-    return () => clearInterval(interval)
-  }, [])
+  const load = () => {
+    api
+      .listRepos()
+      .then((data) => {
+        setRepos(data)
+        setLoadError(null)
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        // Only flip loading off + set error on the first failure; subsequent
+        // poll failures shouldn't clobber a good list with an error state.
+        setLoadError((prev) => prev ?? msg)
+      })
+      .finally(() => setLoading(false))
+  }
 
   const hasIndexing = repos.some((r) => r.status === "indexing")
+
+  // Initial load + adaptive poll: frequent while a repo is indexing, slow
+  // when idle (mirrors dashboard.tsx). Errors don't stop the poller.
+  useEffect(() => {
+    load()
+    const interval = setInterval(load, hasIndexing ? 3000 : 30000)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasIndexing])
 
   const filtered = repos.filter(
     (r) =>
@@ -200,18 +217,39 @@ export function ReposPage() {
                         )}
                       </div>
                     </Link>
-                    <Button
+                    <ConfirmButton
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
+                      aria-label={`Remove ${r.owner}/${r.repo}`}
                       title={`Remove ${r.owner}/${r.repo}`}
-                      onClick={() => handleRemoveRepo(r.owner, r.repo)}
+                      destructive
+                      dialogTitle="Remove repository?"
+                      dialogDescription={`This will unregister ${r.owner}/${r.repo} and drop its index. Re-adding it later re-indexes from scratch.`}
+                      confirmLabel="Remove"
+                      onConfirm={() => handleRemoveRepo(r.owner, r.repo)}
                     >
                       <Trash2 className="h-4 w-4" />
-                    </Button>
+                    </ConfirmButton>
                   </div>
                 )
               })}
+            </div>
+          ) : loadError && repos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+              <div className="rounded-full bg-destructive/10 p-3">
+                <RefreshCw className="h-6 w-6 text-destructive" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Couldn't load repositories</p>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  {loadError}
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={load}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Retry
+              </Button>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
