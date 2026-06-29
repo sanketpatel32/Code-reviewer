@@ -52,10 +52,12 @@ export function RepoDetailPage() {
     () => api.getRepo(owner!, repo!),
     [owner, repo],
   )
-  const { data: packages } = useAsync(
-    () => api.getPackages(owner!, repo!),
-    [owner, repo],
-  )
+  const {
+    data: packages,
+    loading: packagesLoading,
+    error: packagesError,
+    refetch: refetchPackages,
+  } = useAsync(() => api.getPackages(owner!, repo!), [owner, repo])
   const { data: vulns } = useAsync(
     () =>
       api
@@ -111,6 +113,9 @@ export function RepoDetailPage() {
 
   const [indexing, setIndexing] = useState(false)
   const [indexStatus, setIndexStatus] = useState("")
+  // True between a trigger click and the poller confirming the job started.
+  // Guards against double-clicks firing two indexing jobs on the same repo.
+  const [submitting, setSubmitting] = useState(false)
 
   // Poll indexing status continuously so the UI reflects jobs started from
   // anywhere (this page, the setup modal, a webhook-driven backfill, etc.).
@@ -157,6 +162,8 @@ export function RepoDetailPage() {
 
   const triggerIndex = async (full: boolean) => {
     if (!owner || !repo) return
+    if (indexing || submitting) return
+    setSubmitting(true)
     setIndexing(true)
     setIndexStatus(full ? "Starting full re-index..." : "Starting index update...")
     try {
@@ -164,6 +171,8 @@ export function RepoDetailPage() {
     } catch {
       setIndexStatus("Failed to start indexing")
       setIndexing(false)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -232,16 +241,26 @@ export function RepoDetailPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => triggerIndex(false)}
+                disabled={submitting}
               >
-                <RefreshCw className="mr-1 h-3 w-3" />
+                {submitting ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1 h-3 w-3" />
+                )}
                 Update Index
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => triggerIndex(true)}
+                disabled={submitting}
               >
-                <RefreshCw className="mr-1 h-3 w-3" />
+                {submitting ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1 h-3 w-3" />
+                )}
                 Full Re-index
               </Button>
             </>
@@ -474,10 +493,24 @@ export function RepoDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <DependenciesTable
-                packages={packages ?? []}
-                vulnerabilities={vulns ?? []}
-              />
+              {packagesLoading ? (
+                <p className="text-sm text-muted-foreground">Loading packages...</p>
+              ) : packagesError ? (
+                <div className="flex flex-col items-start gap-3">
+                  <p className="text-sm text-destructive">
+                    Couldn't load dependencies: {packagesError}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={refetchPackages}>
+                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <DependenciesTable
+                  packages={packages ?? []}
+                  vulnerabilities={vulns ?? []}
+                />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -503,13 +536,24 @@ export function RepoDetailPage() {
 }
 
 function BlastRadiusList({ owner, repo }: { owner: string; repo: string }) {
-  const { data, loading } = useAsync(
+  const { data, loading, error, refetch } = useAsync(
     () => api.getBlastRadius(owner, repo),
     [owner, repo],
   )
 
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading...</p>
+  }
+  if (error) {
+    return (
+      <div className="flex flex-col items-start gap-3">
+        <p className="text-sm text-destructive">Couldn't load blast radius: {error}</p>
+        <Button variant="outline" size="sm" onClick={refetch}>
+          <RefreshCw className="mr-2 h-3.5 w-3.5" />
+          Retry
+        </Button>
+      </div>
+    )
   }
 
   const hasInternal = data && data.internal.length > 0
