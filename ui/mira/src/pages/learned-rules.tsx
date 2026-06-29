@@ -1,8 +1,9 @@
-import { Brain, Sparkles } from "lucide-react"
+import { Brain, RefreshCw, Sparkles } from "lucide-react"
 import { useMemo } from "react"
 import { Link } from "react-router"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -10,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { api, type OrgLearnedRuleModel } from "@/lib/api"
 import { useAsync, useDocumentTitle } from "@/lib/hooks"
 
@@ -27,10 +29,12 @@ const SIGNAL_STYLE: Record<string, string> = {
 
 export function LearnedRulesPage() {
   useDocumentTitle("Learnings")
-  const { data: rules, loading } = useAsync(
-    () => api.listLearnedRules().catch(() => []),
-    [],
-  )
+  const {
+    data: rules,
+    loading,
+    error: rulesError,
+    refetch: refetchRules,
+  } = useAsync(() => api.listLearnedRules(), [])
   const { data: version } = useAsync(
     () => api.getVersion().catch(() => null),
     [],
@@ -62,7 +66,37 @@ export function LearnedRulesPage() {
         </p>
       </div>
 
-      {!loading && totalRules === 0 ? (
+      {loading ? (
+        <div className="space-y-4">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="h-4 w-56" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {Array.from({ length: 2 }).map((_, j) => (
+                  <Skeleton key={j} className="h-16 w-full rounded-lg" />
+                ))}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : rulesError ? (
+        <Card className="border-destructive/40">
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+            <Brain className="h-8 w-8 text-destructive" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Couldn't load learnings</p>
+              <p className="max-w-md text-sm text-muted-foreground">{rulesError}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={refetchRules}>
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      ) : totalRules === 0 ? (
         <Card>
           <CardContent className="space-y-3 py-12 text-center">
             <Brain className="mx-auto h-8 w-8 text-muted-foreground" />

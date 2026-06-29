@@ -1,8 +1,9 @@
-import { ChevronRight, ExternalLink, ShieldAlert } from "lucide-react"
+import { ChevronRight, ExternalLink, RefreshCw, ShieldAlert } from "lucide-react"
 import { Fragment, useMemo, useState } from "react"
 import { Link } from "react-router"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -118,10 +119,12 @@ function groupVulns(vulns: OrgVulnerabilityModel[]): VulnGroup[] {
 
 export function VulnerabilitiesPage() {
   useDocumentTitle("Vulnerabilities")
-  const { data: vulns, loading } = useAsync<OrgVulnerabilityModel[]>(
-    () => api.listOrgVulnerabilities().catch(() => []),
-    [],
-  )
+  const {
+    data: vulns,
+    loading,
+    error: vulnsError,
+    refetch: refetchVulns,
+  } = useAsync<OrgVulnerabilityModel[]>(() => api.listOrgVulnerabilities(), [])
 
   const total = vulns?.length ?? 0
   const counts = (vulns ?? []).reduce<Record<string, number>>((acc, v) => {
@@ -191,6 +194,18 @@ export function VulnerabilitiesPage() {
                   <Skeleton className="h-4 w-32" />
                 </div>
               ))}
+            </div>
+          ) : vulnsError ? (
+            <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+              <ShieldAlert className="h-8 w-8 text-destructive" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Couldn't load vulnerabilities</p>
+                <p className="max-w-md text-sm text-muted-foreground">{vulnsError}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={refetchVulns}>
+                <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                Retry
+              </Button>
             </div>
           ) : total === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
