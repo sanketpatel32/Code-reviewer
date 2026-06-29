@@ -67,8 +67,28 @@ async def agentic_review_loop(
             logger.warning("Agentic hop %d failed: %s", hop + 1, exc)
             return ""
 
+        # Guard against a provider returning something other than a dict
+        # (malformed JSON, a coroutine leaked by a mock, etc.). Crashing here
+        # with 'coroutine' object is not iterable' is a confusing failure mode
+        # for both tests and a misbehaving LLM endpoint at runtime.
+        if not isinstance(msg, dict):
+            logger.warning(
+                "Agentic hop %d returned non-dict message (%s); aborting loop",
+                hop + 1,
+                type(msg).__name__,
+            )
+            return ""
+
         tool_calls = msg.get("tool_calls") or []
         content = msg.get("content") or ""
+
+        if not isinstance(tool_calls, list):
+            logger.warning(
+                "Agentic hop %d returned non-list tool_calls (%s); aborting loop",
+                hop + 1,
+                type(tool_calls).__name__,
+            )
+            return ""
 
         if not tool_calls:
             logger.debug(
@@ -87,6 +107,8 @@ async def agentic_review_loop(
         )
 
         for call in tool_calls:
+            if not isinstance(call, dict):
+                continue
             fn = call.get("function") or {}
             name = fn.get("name") or ""
             if name == "submit_review":
