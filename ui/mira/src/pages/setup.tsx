@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { toast } from "@/components/ui/sonner"
 import { api } from "@/lib/api"
 import { useDocumentTitle } from "@/lib/hooks"
 
@@ -30,6 +31,7 @@ export function SetupPage() {
   useDocumentTitle("Setup")
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [indexingModel, setIndexingModel] = useState("")
   const [reviewModel, setReviewModel] = useState("")
@@ -37,25 +39,51 @@ export function SetupPage() {
   const [reviewOptions, setReviewOptions] = useState<ModelOption[]>([])
 
   useEffect(() => {
-    api.getModels().then((data) => {
-      setIndexingModel(data.indexing_model)
-      setReviewModel(data.review_model)
-      setIndexingOptions(data.indexing_options)
-      setReviewOptions(data.review_options)
-      setLoading(false)
-    })
+    api
+      .getModels()
+      .then((data) => {
+        setIndexingModel(data.indexing_model)
+        setReviewModel(data.review_model)
+        setIndexingOptions(data.indexing_options)
+        setReviewOptions(data.review_options)
+      })
+      .catch((err) => {
+        setLoadError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   const handleSave = async () => {
     setSaving(true)
-    await api.saveModels(indexingModel, reviewModel)
-    navigate("/")
+    try {
+      await api.saveModels(indexingModel, reviewModel)
+      navigate("/")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not save model selection", { description: msg })
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="text-sm font-medium text-destructive">
+          Couldn't load model options
+        </p>
+        <p className="max-w-sm text-sm text-muted-foreground">{loadError}</p>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          Retry
+        </Button>
       </div>
     )
   }
