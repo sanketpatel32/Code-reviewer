@@ -97,7 +97,12 @@ async def build_code_context(
 
     # 1. Directory summaries (10% budget)
     dir_parts: list[str] = []
-    parent_dirs = sorted({str(Path(p).parent) for p in changed_paths if str(Path(p).parent) != "."})
+    # Use as_posix() — index paths are stored with forward slashes, but
+    # str(Path(...).parent) yields OS-native separators (backslash on Windows),
+    # which then miss every directory_summary lookup.
+    parent_dirs = sorted(
+        {Path(p).parent.as_posix() for p in changed_paths if Path(p).parent.as_posix() != "."}
+    )
     if parent_dirs:
         dir_summaries = store.get_directory_summaries(parent_dirs)
         if dir_summaries:
