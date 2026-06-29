@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Bump to force a re-fetch without remounting. Used by retry buttons.
+  const [reloadTick, setReloadTick] = useState(0)
+  const refetch = useCallback(() => setReloadTick((t) => t + 1), [])
 
   useEffect(() => {
     let cancelled = false
@@ -23,9 +26,9 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
+  }, [...deps, reloadTick])
 
-  return { data, loading, error }
+  return { data, loading, error, refetch }
 }
 
 const APP_NAME = "Mira"

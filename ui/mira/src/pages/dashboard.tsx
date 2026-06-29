@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router"
+import { RefreshCw } from "lucide-react"
 import {
   Area,
   AreaChart,
@@ -12,6 +13,7 @@ import {
   YAxis,
 } from "recharts"
 
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -34,11 +36,14 @@ export function DashboardPage() {
   useDocumentTitle("Dashboard")
   const [period, setPeriod] = useState<"day" | "week" | "month">("day")
 
-  const { data: stats, loading: statsLoading } = useAsync(() => api.getOrgStats(), [])
-  const { data: timeseries, loading: timeseriesLoading } = useAsync(
-    () => api.getTimeseries(period),
-    [period],
-  )
+  const { data: stats, loading: statsLoading, error: statsError, refetch: refetchStats } =
+    useAsync(() => api.getOrgStats(), [])
+  const {
+    data: timeseries,
+    loading: timeseriesLoading,
+    error: timeseriesError,
+    refetch: refetchTimeseries,
+  } = useAsync(() => api.getTimeseries(period), [period])
   // Vulnerability widget — populated by the OSV poller. Swallow errors so a
   // missing endpoint or transient failure just hides the card.
   const { data: vulnSummary } = useAsync(
@@ -113,8 +118,9 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* Onboarding banner — only for fresh installs with no repos */}
-      {!statsLoading && (stats?.total_repos ?? 0) === 0 && (
+      {/* Onboarding banner — only for genuine fresh installs (not a failed
+          fetch, which would otherwise look like zero repos). */}
+      {!statsLoading && !statsError && (stats?.total_repos ?? 0) === 0 && (
         <Card className="border-dashed">
           <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
@@ -130,6 +136,23 @@ export function DashboardPage() {
             >
               Add a repository
             </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Stats load failed — show an error card instead of misleading zeros
+          and a false onboarding banner. Lets the user retry without reload. */}
+      {!statsLoading && statsError && (
+        <Card className="border-destructive/40">
+          <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="text-base font-medium">Couldn't load dashboard stats</p>
+              <p className="text-sm text-muted-foreground">{statsError}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={refetchStats}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -282,6 +305,8 @@ export function DashboardPage() {
           <CardContent>
             {timeseriesLoading ? (
               <ChartSkeleton />
+            ) : timeseriesError ? (
+              <Empty error={timeseriesError} onRetry={refetchTimeseries} />
             ) : timeseries && timeseries.length > 0 ? (
               <LinesChart key={period} data={timeseries} useBars={period !== "day"} />
             ) : (
@@ -298,6 +323,8 @@ export function DashboardPage() {
           <CardContent>
             {timeseriesLoading ? (
               <ChartSkeleton />
+            ) : timeseriesError ? (
+              <Empty error={timeseriesError} onRetry={refetchTimeseries} />
             ) : timeseries && timeseries.length > 0 ? (
               <ReviewsChart key={period} data={timeseries} useBars={period !== "day"} />
             ) : (
@@ -314,6 +341,8 @@ export function DashboardPage() {
           <CardContent>
             {timeseriesLoading ? (
               <ChartSkeleton />
+            ) : timeseriesError ? (
+              <Empty error={timeseriesError} onRetry={refetchTimeseries} />
             ) : timeseries && timeseries.length > 0 ? (
               <TokensChart key={period} data={timeseries} useBars={period !== "day"} />
             ) : (
@@ -331,6 +360,8 @@ export function DashboardPage() {
           <CardContent>
             {timeseriesLoading ? (
               <ChartSkeleton />
+            ) : timeseriesError ? (
+              <Empty error={timeseriesError} onRetry={refetchTimeseries} />
             ) : timeseries && timeseries.length > 0 ? (
               <SeverityStackedBar key={period} data={timeseries} />
             ) : (
@@ -366,7 +397,27 @@ function fmt(n: number): string {
   return String(n)
 }
 
-function Empty() {
+function Empty({
+  error,
+  onRetry,
+}: {
+  error?: string | null
+  onRetry?: () => void
+}) {
+  if (error) {
+    return (
+      <div className="flex h-[250px] flex-col items-center justify-center gap-3 text-center">
+        <p className="text-sm font-medium text-destructive">Couldn't load chart</p>
+        <p className="max-w-xs text-xs text-muted-foreground">{error}</p>
+        {onRetry && (
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RefreshCw className="mr-2 h-3.5 w-3.5" />
+            Retry
+          </Button>
+        )}
+      </div>
+    )
+  }
   return (
     <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
       No data yet
