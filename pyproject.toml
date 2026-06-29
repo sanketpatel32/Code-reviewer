@@ -113,6 +113,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Helper scripts use print() as their primary output mechanism.
 "scripts/**" = ["T20"]
+# dev_commands.py powers CLI entrypoints (uv run doctor, uv run dev, …)
+# whose primary output is stdout, exactly like scripts/**.
+"src/mira/dev_commands.py" = ["T20"]
 # Tests routinely have unused vars (fixtures, intentional throwaways), and
 # eval scripts intentionally print results to stdout.
 "tests/**" = ["F841", "B007", "T20"]
