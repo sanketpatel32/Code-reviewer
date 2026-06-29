@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { ConfirmButton } from "@/components/ui/confirm-button"
 import {
   Card,
   CardContent,
@@ -364,6 +365,7 @@ function RuleItem({
             variant="ghost"
             className="h-8 w-8"
             onClick={onToggle}
+            aria-label={rule.enabled ? "Disable rule" : "Enable rule"}
             title={rule.enabled ? "Disable" : "Enable"}
           >
             <Power className={`h-3 w-3 ${rule.enabled ? "text-green-500" : "text-muted-foreground"}`} />
@@ -374,17 +376,23 @@ function RuleItem({
           variant="ghost"
           className="h-8 w-8"
           onClick={onEdit}
+          aria-label="Edit rule"
         >
           <Pencil className="h-3 w-3" />
         </Button>
-        <Button
+        <ConfirmButton
           size="icon"
           variant="ghost"
           className="h-8 w-8"
-          onClick={onDelete}
+          aria-label="Delete rule"
+          destructive
+          dialogTitle="Delete rule?"
+          dialogDescription={`"${rule.title}" will be removed and no longer apply to reviews.`}
+          confirmLabel="Delete"
+          onConfirm={onDelete}
         >
           <Trash2 className="h-3 w-3" />
-        </Button>
+        </ConfirmButton>
       </div>
     </div>
   )

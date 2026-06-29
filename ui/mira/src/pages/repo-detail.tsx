@@ -24,6 +24,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { ConfirmButton } from "@/components/ui/confirm-button"
+import { toast } from "@/components/ui/sonner"
 import { DependenciesTable } from "@/components/dashboard/dependencies-table"
 import { api, type ReviewContextModel } from "@/lib/api"
 import { useAsync, useDocumentTitle } from "@/lib/hooks"
@@ -107,8 +109,15 @@ export function RepoDetailPage() {
 
   const deleteCtx = async (id: number) => {
     if (!owner || !repo) return
-    await api.deleteContext(owner, repo, id)
-    setContextEntries((prev) => prev.filter((e) => e.id !== id))
+    try {
+      await api.deleteContext(owner, repo, id)
+      setContextEntries((prev) => prev.filter((e) => e.id !== id))
+      toast.success("Context entry removed")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not remove context entry", { description: msg })
+      throw err // re-throw so ConfirmButton keeps its error state
+    }
   }
 
   const [indexing, setIndexing] = useState(false)
@@ -450,6 +459,7 @@ export function RepoDetailPage() {
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8"
+                          aria-label="Edit context entry"
                           onClick={() =>
                             setEditingCtx({
                               id: entry.id,
@@ -460,14 +470,19 @@ export function RepoDetailPage() {
                         >
                           <Pencil className="h-3 w-3" />
                         </Button>
-                        <Button
+                        <ConfirmButton
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8"
-                          onClick={() => deleteCtx(entry.id)}
+                          aria-label="Delete context entry"
+                          destructive
+                          dialogTitle="Delete context entry?"
+                          dialogDescription={`"${entry.title}" will be removed from this repo's review context.`}
+                          confirmLabel="Delete"
+                          onConfirm={() => deleteCtx(entry.id)}
                         >
                           <Trash2 className="h-3 w-3" />
-                        </Button>
+                        </ConfirmButton>
                       </div>
                     </div>
                   ))}

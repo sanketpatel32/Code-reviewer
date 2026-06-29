@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { RelationshipGraph } from "@/components/dashboard/relationship-graph"
+import { toast } from "@/components/ui/sonner"
 import { api } from "@/lib/api"
 import { useAsync, useDocumentTitle } from "@/lib/hooks"
 
@@ -43,21 +44,43 @@ export function RelationshipsPage() {
   })
 
   const confirmEdge = async (source: string, target: string) => {
-    await api.setOverride(source, target, "confirmed")
-    setRefreshKey((k) => k + 1)
+    try {
+      await api.setOverride(source, target, "confirmed")
+      setRefreshKey((k) => k + 1)
+      toast.success("Connection confirmed")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not confirm connection", { description: msg })
+    }
   }
 
   const denyEdge = async (source: string, target: string) => {
-    await api.setOverride(source, target, "denied")
-    setRefreshKey((k) => k + 1)
+    try {
+      await api.setOverride(source, target, "denied")
+      setRefreshKey((k) => k + 1)
+      toast.success("Connection dismissed")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not dismiss connection", { description: msg })
+    }
   }
 
+  const [savingEdge, setSavingEdge] = useState(false)
   const addCustomEdge = async () => {
-    if (!newEdge.source || !newEdge.target) return
-    await api.addCustomEdge(newEdge.source, newEdge.target, newEdge.reason)
-    setNewEdge({ source: "", target: "", reason: "" })
-    setShowAddEdge(false)
-    setRefreshKey((k) => k + 1)
+    if (!newEdge.source || !newEdge.target || savingEdge) return
+    setSavingEdge(true)
+    try {
+      await api.addCustomEdge(newEdge.source, newEdge.target, newEdge.reason)
+      setNewEdge({ source: "", target: "", reason: "" })
+      setShowAddEdge(false)
+      setRefreshKey((k) => k + 1)
+      toast.success("Custom connection added")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error("Could not add connection", { description: msg })
+    } finally {
+      setSavingEdge(false)
+    }
   }
 
   const allRepoNames = repos?.map((r) => `${r.owner}/${r.repo}`) ?? []
@@ -186,9 +209,9 @@ export function RelationshipsPage() {
                     <Button
                       size="sm"
                       onClick={addCustomEdge}
-                      disabled={!newEdge.source || !newEdge.target}
+                      disabled={!newEdge.source || !newEdge.target || savingEdge}
                     >
-                      Add
+                      {savingEdge ? "Adding..." : "Add"}
                     </Button>
                     <Button
                       size="sm"
@@ -233,6 +256,7 @@ export function RelationshipsPage() {
                             size="icon"
                             variant="ghost"
                             className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            aria-label={`Confirm connection ${e.source_repo} → ${e.target_repo}`}
                             onClick={() =>
                               confirmEdge(e.source_repo, e.target_repo)
                             }
@@ -243,6 +267,7 @@ export function RelationshipsPage() {
                             size="icon"
                             variant="ghost"
                             className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            aria-label={`Dismiss connection ${e.source_repo} → ${e.target_repo}`}
                             onClick={() =>
                               denyEdge(e.source_repo, e.target_repo)
                             }
