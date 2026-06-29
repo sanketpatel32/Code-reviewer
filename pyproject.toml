@@ -74,10 +74,9 @@ check = "mira.dev_commands:check"
 doctor = "mira.dev_commands:doctor"
 
 [project.urls]
-Homepage = "https://github.com/miracodeai/mira"
-Repository = "https://github.com/miracodeai/mira"
-Issues = "https://github.com/miracodeai/mira/issues"
-Changelog = "https://github.com/miracodeai/mira/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/sanketpatel32/Code-reviewer"
+Repository = "https://github.com/sanketpatel32/Code-reviewer"
+Issues = "https://github.com/sanketpatel32/Code-reviewer/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mira"]
