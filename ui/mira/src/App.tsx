@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { lazy, Suspense, useEffect, useState } from "react"
 import { BrowserRouter, Navigate, Route, Routes } from "react-router"
 
 import { DashboardLayout } from "@/components/dashboard/layout"
@@ -6,24 +6,63 @@ import { SetupModal } from "@/components/dashboard/setup-modal"
 import { UninstallModal } from "@/components/dashboard/uninstall-modal"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
-import { ActivityPage } from "@/pages/activity"
-import { DashboardPage } from "@/pages/dashboard"
-import { LearnedRulesPage } from "@/pages/learned-rules"
+// Eager: these are the entry surfaces (unauthenticated login + first-run
+// setup), so they must render without a round-trip to fetch a chunk.
 import { LoginPage } from "@/pages/login"
-import { PackagesPage } from "@/pages/packages"
-import { RepoDetailPage } from "@/pages/repo-detail"
-import { RelationshipsPage } from "@/pages/relationships"
-import { ReposPage } from "@/pages/repos"
-import { SettingsPage } from "@/pages/settings"
 import { SetupPage } from "@/pages/setup"
-import { RulesPage } from "@/pages/rules"
-import { ChangePasswordPage } from "@/pages/change-password"
-import { ResetUserPasswordPage } from "@/pages/reset-user-password"
-import { UserFormPage } from "@/pages/user-form"
-import { UsersPage } from "@/pages/users"
-import { VulnerabilitiesPage } from "@/pages/vulnerabilities"
-import { WebhookFormPage } from "@/pages/webhook-form"
-import { WebhooksPage } from "@/pages/webhooks"
+
+// Lazy: every auth-gated route. Each becomes its own chunk, fetched on first
+// navigation, instead of one 1.2MB bundle on initial load.
+const DashboardPage = lazy(() =>
+  import("@/pages/dashboard").then((m) => ({ default: m.DashboardPage })),
+)
+const ActivityPage = lazy(() =>
+  import("@/pages/activity").then((m) => ({ default: m.ActivityPage })),
+)
+const ReposPage = lazy(() =>
+  import("@/pages/repos").then((m) => ({ default: m.ReposPage })),
+)
+const RepoDetailPage = lazy(() =>
+  import("@/pages/repo-detail").then((m) => ({ default: m.RepoDetailPage })),
+)
+const PackagesPage = lazy(() =>
+  import("@/pages/packages").then((m) => ({ default: m.PackagesPage })),
+)
+const RelationshipsPage = lazy(() =>
+  import("@/pages/relationships").then((m) => ({ default: m.RelationshipsPage })),
+)
+const RulesPage = lazy(() =>
+  import("@/pages/rules").then((m) => ({ default: m.RulesPage })),
+)
+const LearnedRulesPage = lazy(() =>
+  import("@/pages/learned-rules").then((m) => ({ default: m.LearnedRulesPage })),
+)
+const VulnerabilitiesPage = lazy(() =>
+  import("@/pages/vulnerabilities").then((m) => ({ default: m.VulnerabilitiesPage })),
+)
+const UsersPage = lazy(() =>
+  import("@/pages/users").then((m) => ({ default: m.UsersPage })),
+)
+const UserFormPage = lazy(() =>
+  import("@/pages/user-form").then((m) => ({ default: m.UserFormPage })),
+)
+const ResetUserPasswordPage = lazy(() =>
+  import("@/pages/reset-user-password").then((m) => ({
+    default: m.ResetUserPasswordPage,
+  })),
+)
+const ChangePasswordPage = lazy(() =>
+  import("@/pages/change-password").then((m) => ({ default: m.ChangePasswordPage })),
+)
+const WebhooksPage = lazy(() =>
+  import("@/pages/webhooks").then((m) => ({ default: m.WebhooksPage })),
+)
+const WebhookFormPage = lazy(() =>
+  import("@/pages/webhook-form").then((m) => ({ default: m.WebhookFormPage })),
+)
+const SettingsPage = lazy(() =>
+  import("@/pages/settings").then((m) => ({ default: m.SettingsPage })),
+)
 
 const API_BASE = import.meta.env.VITE_API_URL || ""
 
@@ -43,6 +82,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>
+}
+
+/** Shown while a lazy route chunk is being fetched on first navigation. */
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <p className="text-sm text-muted-foreground">Loading...</p>
+    </div>
+  )
 }
 
 function SetupGuard({ children }: { children: React.ReactNode }) {
@@ -195,30 +243,146 @@ export function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<DashboardPage />} />
-          <Route path="activity" element={<ActivityPage />} />
-          <Route path="repos" element={<ReposPage />} />
-          <Route path="repos/:owner/:repo" element={<RepoDetailPage />} />
-          <Route path="packages" element={<PackagesPage />} />
-          <Route path="relationships" element={<RelationshipsPage />} />
-          <Route path="rules" element={<RulesPage />} />
-          <Route path="learnings" element={<LearnedRulesPage />} />
-          <Route path="vulnerabilities" element={<VulnerabilitiesPage />} />
-          <Route path="users" element={<UsersPage />} />
-          <Route path="users/new" element={<UserFormPage />} />
+          <Route
+            index
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <DashboardPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="activity"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <ActivityPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="repos"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <ReposPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="repos/:owner/:repo"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <RepoDetailPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="packages"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <PackagesPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="relationships"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <RelationshipsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="rules"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <RulesPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="learnings"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LearnedRulesPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="vulnerabilities"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <VulnerabilitiesPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="users"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <UsersPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="users/new"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <UserFormPage />
+              </Suspense>
+            }
+          />
           <Route
             path="users/:id/password"
-            element={<ResetUserPasswordPage />}
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <ResetUserPasswordPage />
+              </Suspense>
+            }
           />
-          <Route path="account/password" element={<ChangePasswordPage />} />
+          <Route
+            path="account/password"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <ChangePasswordPage />
+              </Suspense>
+            }
+          />
           <Route
             path="settings"
             element={<Navigate to="/settings/models" replace />}
           />
-          <Route path="settings/webhooks" element={<WebhooksPage />} />
-          <Route path="settings/webhooks/new" element={<WebhookFormPage />} />
-          <Route path="settings/webhooks/:id" element={<WebhookFormPage />} />
-          <Route path="settings/:section" element={<SettingsPage />} />
+          <Route
+            path="settings/webhooks"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <WebhooksPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="settings/webhooks/new"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <WebhookFormPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="settings/webhooks/:id"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <WebhookFormPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="settings/:section"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <SettingsPage />
+              </Suspense>
+            }
+          />
         </Route>
       </Routes>
     </BrowserRouter>
